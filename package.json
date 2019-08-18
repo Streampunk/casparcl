@@ -1,0 +1,17 @@
+{
+  "name": "casparcl",
+  "version": "0.0.1",
+  "description": "Implementing the features of CasparCG with Node.JS and OpenCL.",
+  "main": "dist/index.js",
+  "repository": "https://github.com/Streampunk/casparcl.git",
+  "author": "Richard Cartwright <spark@streampunk.media>",
+  "license": "GPL-3.0-or-later",
+  "private": false,
+  "dependencies": {
+    "highland": "^2.13.5"
+  },
+  "devDependencies": {
+    "@types/highland": "^2.12.3",
+    "typescript": "^3.5.3"
+  }
+}
