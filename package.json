@@ -8,6 +8,7 @@
   "license": "GPL-3.0-or-later",
   "private": false,
   "dependencies": {
+    "beamcoder": "^0.3.4",
     "highland": "^2.13.5"
   },
   "devDependencies": {
