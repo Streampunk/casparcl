@@ -56,11 +56,8 @@ let mixerPromise = (s1: Packet, s2: Packet) => new Promise((resolve, reject) => 
 	}, 12)
 })
 
-let source1 : Highland.Stream<Packet> = H(async (push, next) => {
-	let packet = await mediaPromise(counter1++, 'Source1')
-	push(null, packet)
-	next()
-})
+let source1 : Highland.Stream<Packet> = H((push, next) =>
+	mediaPromise(counter1++, 'Source1').then(p => { push(null, p); next(); }))
 
 let source2 : Highland.Stream<Packet> = H(async (push, next) => {
 	let packet = await mediaPromise(counter2++, 'Source2')
