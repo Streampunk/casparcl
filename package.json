@@ -10,7 +10,8 @@
   "dependencies": {
     "beamcoder": "^0.3.4",
     "highland": "^2.13.5",
-    "macadam": "^2.0.9"
+    "macadam": "^2.0.9",
+    "nodencl": "^1.0.1"
   },
   "devDependencies": {
     "@types/highland": "^2.12.3",
