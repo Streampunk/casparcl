@@ -16,12 +16,12 @@ __kernel void
     int x = get_global_id(0);
     int y = get_global_id(1);
     float4 in = read_imagef(input, sampler, (int2)(x,y));
-    write_imagef(output, (int2)(x, 1080-y), in);
+    write_imagef(output, (int2)(x, y), in);
   }
 `;
 
 async function run() {
-	const platformIndex = 0;
+	const platformIndex = 1;
 	const deviceIndex = 0;
 	const context = new nodencl.clContext({
 		platformIndex: platformIndex,
@@ -108,7 +108,7 @@ async function run() {
 		let stamp = process.hrtime();
 		let p = await read()
 		if (result.length >= 1) {
-			work[1] = enc.encode(result[0].frames)
+			work[1] = enc.encode(result[0].frames[0])
 		}
 		if (result.length >= 2) {
 			work[2] = processFrame(result[1].packets[0].data)
