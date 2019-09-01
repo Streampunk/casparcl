@@ -3,6 +3,7 @@ const macadam = require('macadam')
 const nodencl = require('nodencl');
 const v210_io = require('./v210_io.js');
 const fs = require('fs').promises;
+const osc = require('osc')
 
 const testImage = `
 __constant sampler_t sampler1 =
@@ -75,7 +76,7 @@ async function run() {
   	pixelFormat: macadam.bmdFormat10BitYUV
 	})
 
-	async function processFrame(b1, b2) {
+	async function processFrame(b1, b2, fl) {
 		let res = []
 		await v210Src1.hostAccess('writeonly')
 		b1.copy(v210Src1)
@@ -85,7 +86,7 @@ async function run() {
 		res[1] = await v210Reader.fromV210(v210Src2, rgbaDst2)
 		//await rgbaDst.hostAccess('readonly')
 		// dumpFloatBuf(rgbaDst, 1920, 2, 4);
-		res[2] = await testImageProgram.run({input1: rgbaDst1, input2: rgbaDst2, fl: +process.argv[2], output: imageDst})
+		res[2] = await testImageProgram.run({input1: rgbaDst1, input2: rgbaDst2, fl: fl, output: imageDst})
 		//await imageDst.hostAccess('readonly')
 		// dumpFloatBuf(imageDst, 1920, 2, 4);
 		res[3] = await v210Writer.toV210(imageDst, v210Dst)
@@ -113,6 +114,21 @@ async function run() {
 	let data1 = Buffer.alloc(5529600)
 	let data2 = Buffer.alloc(5529600)
 
+	let fl = 0.5
+
+	const oscUdp = new osc.UDPPort({
+    localAddress: "0.0.0.0",
+    localPort: 9876
+	});
+	oscUdp.on("message", function (oscMessage) {
+		// console.log(oscMessage.address)
+    if (oscMessage.address === '/1/fader1') {
+			fl = oscMessage.args[0]
+			console.log(fl)
+		}
+	});
+	oscUdp.open()
+
 	while (true) {
 		let stamp = process.hrtime();
 		let fh1 = await fs.open('../media/EBU_test_sets/filexchange.ebu.ch/EBU test sets - Creative Commons (BY-NC-ND)/HDTV test sequences/1080i25/Graphics_1080i_/Graphics_1080i_/' + frameList1[counter % frameList1.length], 'r')
@@ -120,7 +136,7 @@ async function run() {
 		await Promise.all([fh1.read(data1, 0, data1.length, 0), fh2.read(data2, 0, data2.length, 0)])
 		await fh1.close()
 		await fh2.close()
-		await processFrame(data1, data2)
+		await processFrame(data1, data2, fl)
 		await playback.displayFrame(v210Dst)
 		let diff = process.hrtime(start)
 		let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) )
