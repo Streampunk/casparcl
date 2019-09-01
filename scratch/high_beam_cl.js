@@ -17,9 +17,27 @@ __kernel void
     int x = get_global_id(0);
     int y = get_global_id(1);
     float4 in = read_imagef(input, sampler, (int2)(x,y));
-    write_imagef(output, (int2)(1920 - x, 1080 - y), in);
+    write_imagef(output, (int2)(x, y), in);
   }
 `;
+
+let eagerPromer = p => {
+	let ep = (err, x, push, next) => {
+		// console.log('>>> EAGER <<<', sc)
+		if (err) {
+			push(err);
+			next();
+		} else if (x === H.nil) {
+			push(null, x);
+		} else {
+			next()
+			p(x).then(m => {
+				push(null, m)
+			})
+		}
+	}
+	return H.consume(ep)
+}
 
 function dumpFloatBuf(buf, width, numPixels, numLines) {
   let lineOff = 0;
@@ -73,6 +91,7 @@ async function run() {
 	const v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'fine');
 
 	let stamp = process.hrtime()
+	let lstamp = -1
 
 	async function processFrame(b) {
 		let res = []
@@ -88,14 +107,14 @@ async function run() {
 		res[2] = await v210Writer.toV210(imageDst, v210Dst)
 		await v210Dst.hostAccess('readonly')
 		// v210_io.dumpBuf(v210Dst, 1920, 4);
-		console.log(process.hrtime(lstamp))
+		// console.log(process.hrtime(lstamp))
 		return res;
 	}
 
 	let dm = await beamy.demuxer('file:../media/dpp/AS11_DPP_HD_EXAMPLE_1.mxf')
 	console.log(dm)
 	let dec = await beamy.decoder({ demuxer: dm, stream_index: 0 })
-	let enc = beamy.encoder({ name: 'v210', codec_id: 127, width: 1920, height: 1080, pix_fmt: 'yuv422p10le', bits_per_raw_sample: 20, time_base: [ 1, 50 ] })
+	let enc = beamy.encoder({ name: 'v210', codec_id: 127, width: 1920, height: 1080, pix_fmt: 'yuv422p10le', bits_per_raw_sample: 20, time_base: [ 1, 25 ] })
 	console.log(enc)
 
 	let playback = await macadam.playback({
@@ -117,33 +136,40 @@ async function run() {
 		})
 	}
 
+	let pipel = H.pipeline(
+		H.flatMap(p => { console.log('DECODE', process.hrtime(stamp)); return H(dec.decode(p)); }),
+		H.flatMap(p => { console.log('ENCODE', process.hrtime(stamp)); return H(enc.encode(p.frames)); }),
+		H.flatMap(p => { console.log('PROCESS', process.hrtime(stamp)); return H(processFrame(p.packets[0].data)); })
+	)
+
 	H(gen)
-	.drop(17000)
+	// .drop(400)
 	// .tap(() => console.log(counter++, stamp))
-	.flatMap(p => H(dec.decode(p)))
-	//.tap(x => console.log(x.total_time))
-	.flatMap(p => H(enc.encode(p.frames)) )
-	//.tap(x => console.log(x.total_time))
-	.flatMap(p => H(processFrame(p.packets[0].data)))
+	.through(pipel)
 	// .tap(console.log)
+	.consume((err, x, push, next) => {
+		if (lstamp === -1) {
+			lstamp = process.hrtime()
+		}
+		let diff = process.hrtime(lstamp)
+		let wait = (++counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) )
+		console.log('+++', diff, wait)
+		if (err) { push(err); next(); }
+		else if (x === H.nil) { push(null, x); }
+		else {
+			// console.log('wait', wait)
+			setTimeout(() => {
+				push(null, x);
+				next()
+			}, wait > 0 ? wait : 0)
+		}
+	})
 	.tap(p => {
 	// 	// console.log(v210Dst);
 		playback.displayFrame(v210Dst)
 	})
-	// .consume((err, x, push, next) => {
-	// 	let wait = 40 - (process.hrtime(stamp)[1] / 1000000 )
-	// 	if (err) { push(err); next(); }
-	// 	else if (x === H.nil) { push(null, x); }
-	// 	else {
-	// 		// console.log('wait', wait)
-	// 		setTimeout(() => {
-	// 			push(null, x);
-	// 			next();
-	// 		}, wait > 0 ? wait : 0)
-	// 	}
-	// })
 	// .each(() => { console.log(process.hrtime(stamp)); stamp = process.hrtime(); }).done(() => { dec.flush() })
-	.each(() => { console.log('>>>', process.hrtime(stamp)); stamp = process.hrtime() }).done(() => { dec.flush() })
+	.each(() => { console.log('>>>', process.hrtime(stamp)); stamp = process.hrtime(); }).done(() => { dec.flush() })
 }
 
 run()
