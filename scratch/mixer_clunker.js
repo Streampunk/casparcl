@@ -5,31 +5,47 @@ const v210_io = require('./v210_io.js');
 const fs = require('fs').promises;
 const osc = require('osc')
 
+// const testImage = `
+// __constant sampler_t sampler1 =
+//       CLK_NORMALIZED_COORDS_FALSE
+//     | CLK_ADDRESS_CLAMP_TO_EDGE
+//     | CLK_FILTER_NEAREST;
+//
+// __constant sampler_t sampler2 =
+//       CLK_NORMALIZED_COORDS_FALSE
+//     | CLK_ADDRESS_CLAMP_TO_EDGE
+//     | CLK_FILTER_NEAREST;
+//
+// __kernel void
+//   testImage(__read_only image2d_t input1,
+// 						__read_only image2d_t input2,
+// 						float fl,
+//             __write_only image2d_t output) {
+//
+//     int x = get_global_id(0);
+//     int y = get_global_id(1);
+//     float4 in1 = read_imagef(input1, sampler1, (int2)(x,y));
+// 		float4 in2 = read_imagef(input2, sampler2, (int2)(x,y));
+// 		float rl = 1.0f - fl;
+//     write_imagef(output, (int2)(x, y),
+// 			(float4)(fl * in1.s0 + rl * in2.s0, fl * in1.s1 + rl * in2.s1, fl * in1.s2 + rl * in2.s2, 1.0f));
+//   }
+// `;
+
 const testImage = `
-__constant sampler_t sampler1 =
+__constant sampler_t smp =
       CLK_NORMALIZED_COORDS_FALSE
     | CLK_ADDRESS_CLAMP_TO_EDGE
     | CLK_FILTER_NEAREST;
 
-__constant sampler_t sampler2 =
-      CLK_NORMALIZED_COORDS_FALSE
-    | CLK_ADDRESS_CLAMP_TO_EDGE
-    | CLK_FILTER_NEAREST;
-
-__kernel void
-  testImage(__read_only image2d_t input1,
-						__read_only image2d_t input2,
-						float fl,
-            __write_only image2d_t output) {
-
-    int x = get_global_id(0);
-    int y = get_global_id(1);
-    float4 in1 = read_imagef(input1, sampler1, (int2)(x,y));
-		float4 in2 = read_imagef(input2, sampler2, (int2)(x,y));
-		float rl = 1.0f - fl;
-    write_imagef(output, (int2)(x, y),
-			(float4)(fl * in1.s0 + rl * in2.s0, fl * in1.s1 + rl * in2.s1, fl * in1.s2 + rl * in2.s2, 1.0f));
-  }
+__kernel void mix(
+__read_only image2d_t s1, __read_only image2d_t s2, float l, __write_only image2d_t d) {
+ int2 p=(int2)(get_global_id(0),get_global_id(1));
+ float4 i=read_imagef(s1,smp,p);
+ float4 j=read_imagef(s2,smp,p);
+ float r=1-l;
+ write_imagef(d,p,(float4)(l*i.s0+r*j.s0,l*i.s1+r*j.s1,l*i.s2+r*j.s2,1.0f));
+}
 `;
 
 async function run() {
@@ -124,24 +140,25 @@ async function run() {
 		// console.log(oscMessage.address)
     if (oscMessage.address === '/1/fader1') {
 			fl = oscMessage.args[0]
-			console.log(fl)
+			// console.log(fl)
 		}
 	});
 	oscUdp.open()
 
 	while (true) {
-		let stamp = process.hrtime();
 		let fh1 = await fs.open('../media/EBU_test_sets/filexchange.ebu.ch/EBU test sets - Creative Commons (BY-NC-ND)/HDTV test sequences/1080i25/Graphics_1080i_/Graphics_1080i_/' + frameList1[counter % frameList1.length], 'r')
 		let fh2 = await fs.open('../media/EBU_test_sets/filexchange.ebu.ch/EBU test sets - Creative Commons (BY-NC-ND)/HDTV test sequences/1080i25/girlflower1_1080i_/girlflower1_1080i_/' + frameList2[counter % frameList2.length], 'r')
 		await Promise.all([fh1.read(data1, 0, data1.length, 0), fh2.read(data2, 0, data2.length, 0)])
 		await fh1.close()
 		await fh2.close()
+		let stamp = process.hrtime()
 		await processFrame(data1, data2, fl)
+		let total = process.hrtime(stamp)
 		await playback.displayFrame(v210Dst)
 		let diff = process.hrtime(start)
 		let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) )
 		await waitForIt(wait)
-		console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`)
+		console.log(`Clunk ${counter++} completed in ${total} waiting ${wait}`)
 	}
 }
 
