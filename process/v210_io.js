@@ -13,8 +13,6 @@
   limitations under the License.
 */
 
-const colMaths = require('./colourMaths.js');
-
 const v210Kernel = `
   __kernel void read(__global uint4* restrict input,
                      __global float4* restrict output,
@@ -239,103 +237,62 @@ function dumpBuf(buf, width, numLines) {
   }
 }
 
-function reader(context, width, height, colSpec, outColSpec) {
-  this.context = context;
+function reader(width, height) {
+  console.log('v210 reader');
   this.width = width;
-
-  const numBits = 10;
-  const lumaBlack = 64;
-  const lumaWhite = 940;
-  const chromaRange = 896;
-
-  // process one image line per work group, 48 pixels per work item
-  this.workItemsPerGroup = getPitch(this.width) / 48;
-  this.globalWorkItems = this.workItemsPerGroup * height;
-
-  const colMatrix2d = colMaths.ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chromaRange);
-  this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d);
-
-  this.gammaArray = colMaths.gamma2linearLUT(colSpec);
-
-  const gamutMatrix2d = colMaths.rgb2rgbMatrix(colSpec, outColSpec);
-  this.gamutMatrixArray = colMaths.matrixFlatten(gamutMatrix2d);
-
+  this.height = height;
   return this;
 }
 
-reader.prototype.init = async function() {
-  this.colMatrix = await this.context.createBuffer(this.colMatrixArray.byteLength, 'readonly', 'none');
-  await this.colMatrix.hostAccess('writeonly');
-  Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
+// process one image line per work group
+reader.prototype.pixelsPerWorkItem = 48;
+reader.prototype.getWorkItemsPerGroup = function() { return getPitch(this.width) / this.pixelsPerWorkItem; }
+reader.prototype.getGlobalWorkItems = function() { return this.getWorkItemsPerGroup() * this.height; }
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
-  await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
+reader.prototype.numBits = 10;
+reader.prototype.lumaBlack = 64;
+reader.prototype.lumaWhite = 940;
+reader.prototype.chromaRange = 896;
 
-  this.gamutMatrix = await this.context.createBuffer(this.gamutMatrixArray.byteLength, 'readonly', 'none');
-  await this.gamutMatrix.hostAccess('writeonly');
-  Buffer.from(this.gamutMatrixArray.buffer).copy(this.gamutMatrix);
+reader.prototype.kernel = v210Kernel;
+reader.prototype.getKernelParams = function(params) {
+  return {
+    input: params.source,
+    output: params.dest,
+    width: this.width
+  }
+}
 
-  this.v210ReadProgram = await this.context.createProgram(v210Kernel, {
-    name: 'read',
-    globalWorkItems: this.globalWorkItems,
-    workItemsPerGroup: this.workItemsPerGroup
-  });
-};
-
-reader.prototype.fromV210 = async function(src, dst) {
-  return await this.v210ReadProgram.run(
-    { input: src, output: dst, width: this.width, colMatrix: this.colMatrix, 
-      gammaLut: this.gammaLut, gamutMatrix: this.gamutMatrix });
-};
-
-function writer(context, width, height, colSpec) {
-  this.context = context;
+function writer(width, height) {
   this.width = width;
-
-  const numBits = 10;
-  const lumaBlack = 64;
-  const lumaWhite = 940;
-  const chromaRange = 896;
-
-  // process one image line per work group, 48 pixels per work item
-  this.workItemsPerGroup = getPitch(this.width) / 48;
-  this.globalWorkItems = this.workItemsPerGroup * height;
-
-  const colMatrix2d = colMaths.rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chromaRange);
-  this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d);
-
-  this.gammaArray = colMaths.linear2gammaLUT(colSpec);
+  this.height = height;
   return this;
 }
 
-writer.prototype.init = async function() {
-  this.colMatrix = await this.context.createBuffer(this.colMatrixArray.byteLength, 'readonly', 'none');
-  await this.colMatrix.hostAccess('writeonly');
-  Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
+// process one image line per work group
+writer.prototype.pixelsPerWorkItem = 48;
+writer.prototype.getWorkItemsPerGroup = function() { return getPitch(this.width) / this.pixelsPerWorkItem; }
+writer.prototype.getGlobalWorkItems = function() { return this.getWorkItemsPerGroup() * this.height; }
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
-  await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
+writer.prototype.numBits = 10;
+writer.prototype.lumaBlack = 64;
+writer.prototype.lumaWhite = 940;
+writer.prototype.chromaRange = 896;
 
-  this.v210WriteProgram = await this.context.createProgram(v210Kernel, {
-    name: 'write',
-    globalWorkItems: this.globalWorkItems,
-    workItemsPerGroup: this.workItemsPerGroup
-  });
-};
-
-writer.prototype.toV210 = async function(src, dst) {
-  return await this.v210WriteProgram.run(
-    { input: src, output: dst, width: this.width, colMatrix: this.colMatrix, 
-      gammaLut: this.gammaLut });
-};
+writer.prototype.kernel = v210Kernel;
+writer.prototype.getKernelParams = function(params) {
+  return {
+    input: params.source,
+    output: params.dest,
+    width: this.width
+  }
+}
 
 module.exports = {
-  reader: reader,
-  writer: writer,
+  reader,
+  writer,
 
-  getPitchBytes: getPitchBytes,
-  fillBuf: fillBuf,
-  dumpBuf: dumpBuf,
+  getPitchBytes,
+  fillBuf,
+  dumpBuf
 };
