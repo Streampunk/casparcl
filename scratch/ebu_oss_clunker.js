@@ -13,24 +13,33 @@ __constant sampler_t sampler1 =
     | CLK_ADDRESS_CLAMP_TO_EDGE
     | CLK_FILTER_NEAREST;
 
-__constant sampler_t sampler2 =
-      CLK_NORMALIZED_COORDS_FALSE
-    | CLK_ADDRESS_CLAMP_TO_EDGE
-    | CLK_FILTER_NEAREST;
-
 __kernel void
   testImage(__read_only image2d_t input1,
 						__read_only image2d_t input2,
-						float fl,
+						float mix,
+						int invert,
+						int flip,
+						float wipe,
+						float fade,
             __write_only image2d_t output) {
 
     int x = get_global_id(0);
     int y = get_global_id(1);
     float4 in1 = read_imagef(input1, sampler1, (int2)(x,y));
-		float4 in2 = read_imagef(input2, sampler2, (int2)(x,y));
-		float rl = 1.0f - fl;
-    write_imagef(output, (int2)(x, y),
-			(float4)(fl * in1.s0 + rl * in2.s0, fl * in1.s1 + rl * in2.s1, fl * in1.s2 + rl * in2.s2, 1.0f));
+		float4 in2 = read_imagef(input2, sampler1, (int2)(x,y));
+		float rmix = 1.0f - mix;
+		float4 out = (float4)(mix * in1.s0 + rmix * in2.s0, mix * in1.s1 + rmix * in2.s1, mix * in1.s2 + rmix * in2.s2, 1.0f);
+		if (invert == 1) {
+			out = (float4)(1.0f - out.s0, 1.0f - out.s1, 1.0f - out.s2, 1.0f);
+		}
+		if (flip == 1) {
+			x = 1920 - x;
+		}
+		if (x < 1920 * wipe) {
+			out = (float4)(0.75 * wipe, 0.5 * wipe, 0.9 * wipe, 1.0f);
+		}
+		out = (float4)(fade * out.s0, fade * out.s1, fade * out.s2, 1.0f);
+		write_imagef(output, (int2)(x, y), out);
   }
 `;
 
@@ -91,7 +100,7 @@ async function run() {
   	pixelFormat: macadam.bmdFormat10BitYUV
 	})
 
-	async function processFrame(b1, b2, fl) {
+	async function processFrame(b1, b2, mix, invert, flip, wipe, fade) {
 		let res = []
 		await Promise.all([
 			srcs1[0].hostAccess('writeonly', b1[0].slice(0, lumaBytes)),
@@ -105,7 +114,8 @@ async function run() {
 			yuv422p10Loader2.fromYUV({ sources: srcs2, dest: rgbaDst2 }) ]);
 		//await rgbaDst.hostAccess('readonly')
 		// dumpFloatBuf(rgbaDst, 1920, 2, 4);
-		res[2] = await testImageProgram.run({input1: rgbaDst1, input2: rgbaDst2, fl: fl, output: imageDst})
+		res[2] = await testImageProgram.run({input1: rgbaDst1, input2: rgbaDst2,
+			mix: mix, invert: invert, flip: flip, wipe: wipe, fade: fade, output: imageDst})
 		//await imageDst.hostAccess('readonly')
 		// dumpFloatBuf(imageDst, 1920, 2, 4);
 		res[3] = await v210Saver.toYUV({ source: imageDst, dest: v210Dst })
@@ -130,19 +140,62 @@ async function run() {
 	await dm2.seek({ time: 360.0 })
 	let dec2 = await beamy.decoder({ demuxer: dm1, stream_index: 0 })
 
-	async function read1() {
+	let rate1 = 1.0
+	let rate2 = 1.0
+	let nextRate1 = 1.0
+	let nextRate2 = 1.0
+	let fraction1 = 0.5
+	let fraction2 = 0.5
+	let previous1, previous2
+
+	async function read1 (rootCall = true) {
+		if (rootCall === true) {
+			fraction1 = fraction1 + rate1
+			rate1 = nextRate1
+		}
 		let p = await dm1.read()
-		if (p.stream_index === 0) return p
-		return read1()
+		if (p.stream_index === 0) {
+			if (fraction1 <= 0.5 && previous1) {
+				return previous1
+			}
+			if (fraction1 > 1.5) {
+				fraction1 -= 1.0
+				return read1(false)
+			}
+			previous1 = p
+			fraction1 -= 1.0
+			return p
+		}
+		return read1(false)
 	}
 
-	async function read2() {
+	async function read2(rootCall = true) {
+		if (rootCall === true) {
+			fraction2 = fraction2 + rate2
+			rate2 = nextRate2
+		}
+
 		let p = await dm2.read()
-		if (p.stream_index === 0) return p
-		return read2()
+		if (p.stream_index === 0) {
+			if (fraction2 <= 0.5 && previous2) {
+				return previous2
+			}
+			if (fraction2 > 1.5) {
+				fraction2 -= 1.0
+				return read2(false)
+			}
+			previous2 = p
+			fraction2 -= 1
+			return p
+		}
+		return read2(false)
 	}
 
-	let fl = 0.5
+	let mix = 0.5
+	let invert = 0
+	let flip = 0
+	let wipe = 0
+	let fade = 1.0
 
 	const oscUdp = new osc.UDPPort({
     localAddress: "0.0.0.0",
@@ -151,8 +204,45 @@ async function run() {
 	oscUdp.on("message", function (oscMessage) {
 		// console.log(oscMessage.address)
     if (oscMessage.address === '/1/fader1') {
-			fl = oscMessage.args[0]
-			// console.log(fl)
+			mix = oscMessage.args[0]
+			return;
+		}
+		if (oscMessage.address == '/1/toggle2') {
+			invert = oscMessage.args[0]
+			return;
+		}
+		if (oscMessage.address == '/1/toggle1') {
+			flip = oscMessage.args[0]
+			return;
+		}
+		if (oscMessage.address == '/1/fader5') {
+			wipe = oscMessage.args[0]
+			return;
+		}
+		if (oscMessage.address == '/1/fader2') {
+			fade = oscMessage.args[0] * oscMessage.args[0]
+			return;
+		}
+		if (oscMessage.address == '/1/fader3') {
+			nextRate1 = oscMessage.args[0] * oscMessage.args[0] * 4.0
+			return;
+		}
+		if (oscMessage.address == '/1/fader4') {
+			nextRate2 = oscMessage.args[0] * oscMessage.args[0] * 4.0
+			return;
+		}
+		if (oscMessage.address == '/1/toggle3') {
+			rate1 = 1.0
+			nextRate1 = 1.0
+			fraction1 = 0.5
+			return;
+		}
+		if (oscMessage.address == '/1/toggle4') {
+			rate2 = 1.0
+			nextRate2 = 1.0
+			fraction2 = 0.5
+			// previous2 = undefined
+			return;
 		}
 	});
 	oscUdp.open();
@@ -168,7 +258,7 @@ async function run() {
 			work[1] = Promise.all([dec1.decode(result[0][0]), dec2.decode(result[0][1])])
 		}
 		if (result.length >= 2) {
-			work[2] = processFrame(result[1][0].frames[0].data, result[1][1].frames[0].data, fl)
+			work[2] = processFrame(result[1][0].frames[0].data, result[1][1].frames[0].data, mix, invert, flip, wipe, fade)
 		}
 		if (result.length >= 3) {
 			work[3] = playback.displayFrame(v210Dst)
