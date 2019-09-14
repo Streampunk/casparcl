@@ -35,6 +35,7 @@ __kernel void
 		if (flip == 1) {
 			x = 1920 - x;
 		}
+		// y = (y % 2 == 0) ? y + 1 : y - 1;
 		if (x < 1920 * wipe) {
 			out = (float4)(0.75 * wipe, 0.5 * wipe, 0.9 * wipe, 1.0f);
 		}
@@ -67,7 +68,6 @@ async function run() {
   const v210Saver = new rgbyuv.yuvSaver(context, colSpecWrite, new v210_io.writer(width, height));
   await v210Saver.init();
 
-	// const globalWorkItems = Uint32Array.from([ width, height ]);
 	const testImageProgram = await context.createProgram(testImage, {
 		globalWorkItems: Uint32Array.from([ width, height ])
 	});
@@ -100,6 +100,17 @@ async function run() {
   	pixelFormat: macadam.bmdFormat10BitYUV
 	})
 
+	function dumpFloatBuf(buf, width, height, numPixels, numLines) {
+	  const r = (b, o) => b.readFloatLE(o).toFixed(4);
+	  for (let y=0; y<numLines; ++y) {
+	    const off = y*width*4*4;
+	    let s = `Line ${y}: ${r(buf, off)}`;
+	    for (let i=1; i<numPixels*4; ++i)
+	      s += `, ${r(buf, off+i*4)}`;
+	    console.log(s);
+	  }
+	}
+
 	async function processFrame(b1, b2, mix, invert, flip, wipe, fade) {
 		let res = []
 		await Promise.all([
@@ -112,15 +123,10 @@ async function run() {
 		[ res[0], res[1] ] = await Promise.all([
 			yuv422p10Loader1.fromYUV({ sources: srcs1, dest: rgbaDst1 }),
 			yuv422p10Loader2.fromYUV({ sources: srcs2, dest: rgbaDst2 }) ]);
-		//await rgbaDst.hostAccess('readonly')
-		// dumpFloatBuf(rgbaDst, 1920, 2, 4);
 		res[2] = await testImageProgram.run({input1: rgbaDst1, input2: rgbaDst2,
-			mix: mix, invert: invert, flip: flip, wipe: wipe, fade: fade, output: imageDst})
-		//await imageDst.hostAccess('readonly')
-		// dumpFloatBuf(imageDst, 1920, 2, 4);
+		  mix: mix, invert: invert, flip: flip, wipe: wipe, fade: fade, output: imageDst})
 		res[3] = await v210Saver.toYUV({ source: imageDst, dest: v210Dst })
 		await v210Dst.hostAccess('readonly')
-		// v210_io.dumpBuf(v210Dst, 1920, 4);
 		// console.log(process.hrtime(lstamp))
 		return res;
 	}
@@ -233,13 +239,13 @@ async function run() {
 		}
 		if (oscMessage.address == '/1/toggle3') {
 			rate1 = 1.0
-			nextRate1 = 1.0
+			nextRate1 = oscMessage.args[0]
 			fraction1 = 0.5
 			return;
 		}
 		if (oscMessage.address == '/1/toggle4') {
 			rate2 = 1.0
-			nextRate2 = 1.0
+			nextRate2 = oscMessage.args[0]
 			fraction2 = 0.5
 			// previous2 = undefined
 			return;
@@ -263,7 +269,6 @@ async function run() {
 		if (result.length >= 3) {
 			work[3] = playback.displayFrame(v210Dst)
 		}
-		// console.log(work)
 		result = await Promise.all(work)
 		let diff = process.hrtime(start)
 		let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) )
