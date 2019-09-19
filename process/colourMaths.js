@@ -57,6 +57,17 @@ const colParams = {
     beta: 0.018,
     gamma: 0.45,
     delta: 4.5
+  },
+  'sRGB': { // https://en.wikipedia.org/wiki/SRGB
+    kR: 0.0, kB: 0.0,
+    rx: 0.640, ry: 0.330,
+    gx: 0.300, gy: 0.600,
+    bx: 0.150, by: 0.060,
+    wx: 0.3127, wy: 0.3290,
+    alpha: 1.055,
+    beta: 0.0031308,
+    gamma: 1.0 / 2.4,
+    delta: 12.92
   }
 };
 
