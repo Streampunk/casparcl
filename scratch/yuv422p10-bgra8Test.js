@@ -15,7 +15,9 @@
 
 const addon = require('nodencl');
 const rgbyuv = require('../process/rgbyuvPacker.js');
+const rgbrgb = require('../process/rgbrgbPacker.js');
 const yuv422p10_io = require('../process/yuv422p10_io.js');
+const bgra8_io = require('../process/bgra8_io.js');
 
 function dumpFloatBuf(buf, width, height, numPixels, numLines) {
   const r = (b, o) => b.readFloatLE(o).toFixed(4);
@@ -40,15 +42,15 @@ async function noden() {
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
 
   const colSpecRead = '709';
-  const colSpecWrite = '2020';
+  const colSpecWrite = 'sRGB';
   const width = 1920;
   const height = 1080;
 
   const yuv422p10Loader = new rgbyuv.yuvLoader(context, colSpecRead, colSpecWrite, new yuv422p10_io.reader(width, height));
   await yuv422p10Loader.init();
 
-  const yuv422p10Saver = new rgbyuv.yuvSaver(context, colSpecWrite, new yuv422p10_io.writer(width, height));
-  await yuv422p10Saver.init();
+  const bgra8Saver = new rgbrgb.rgbSaver(context, colSpecWrite, new bgra8_io.writer(width, height));
+  await bgra8Saver.init();
 
   const lumaBytes = yuv422p10_io.getPitchBytes(width) * height;
   const chromaBytes = lumaBytes / 2;
@@ -69,33 +71,22 @@ async function noden() {
   const numBytesRGBA = width * height * 4 * 4;
   const rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
 
-  const dsts = [
-    await context.createBuffer(lumaBytes, 'writeonly', 'coarse'),
-    await context.createBuffer(chromaBytes, 'writeonly', 'coarse'),
-    await context.createBuffer(chromaBytes, 'writeonly', 'coarse'),
-  ];
+  const numBytesBGRA8 = bgra8_io.getPitchBytes(width) * height;
+  const bgra8Dst = await context.createBuffer(numBytesBGRA8, 'writeonly', 'coarse');
 
   let timings = await yuv422p10Loader.fromYUV({ sources: srcs, dest: rgbaDst });
   console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
   await rgbaDst.hostAccess('readonly');
-  dumpFloatBuf(rgbaDst, width, height, 2, 4);
+  dumpFloatBuf(rgbaDst, width, height, 2, 8);
 
-  timings = await yuv422p10Saver.toYUV({ source: rgbaDst, dests: dsts });
+  timings = await bgra8Saver.toRGB({ source: rgbaDst, dest: bgra8Dst });
   console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
-  await dsts[0].hostAccess('readonly');
-  await dsts[1].hostAccess('readonly');
-  await dsts[2].hostAccess('readonly');
-  const yuv422p10Dst = Buffer.concat(dsts, numBytesyuv422p10);
-  yuv422p10_io.dumpBuf(yuv422p10Dst, width, height, 4);
+  await bgra8Dst.hostAccess('readonly');
+  bgra8_io.dumpBuf(bgra8Dst, width, 8);
 
-  await srcs[0].hostAccess('readonly');
-  await srcs[1].hostAccess('readonly');
-  await srcs[2].hostAccess('readonly');
-  console.log('Compare returned', yuv422p10Src.compare(yuv422p10Dst));
-  
-  return [srcs[0], dsts[0]];
+  return [srcs[0], bgra8Dst];
 }
 noden()
   .then(([i, o]) => [i.creationTime, o.creationTime])

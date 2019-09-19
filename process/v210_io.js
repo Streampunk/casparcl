@@ -238,7 +238,6 @@ function dumpBuf(buf, width, numLines) {
 }
 
 function reader(width, height) {
-  console.log('v210 reader');
   this.width = width;
   this.height = height;
   return this;
