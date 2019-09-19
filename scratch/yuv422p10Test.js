@@ -32,15 +32,15 @@ async function noden() {
   const platformIndex = 1;
   const deviceIndex = 0;
   const context = new addon.clContext({
-    platformIndex: platformIndex, 
+    platformIndex: platformIndex,
     deviceIndex: deviceIndex
   });
-  const platformInfo = context.getPlatformInfo();
+  const platformInfo = await context.getPlatformInfo();
   // console.log(JSON.stringify(platformInfo, null, 2));
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
 
   const colSpecRead = '709';
-  const colSpecWrite = '2020';
+  const colSpecWrite = '709';
   const width = 1920;
   const height = 1080;
 
@@ -94,7 +94,7 @@ async function noden() {
   await srcs[1].hostAccess('readonly');
   await srcs[2].hostAccess('readonly');
   console.log('Compare returned', yuv422p10Src.compare(yuv422p10Dst));
-  
+
   return [srcs[0], dsts[0]];
 }
 noden()

@@ -32,15 +32,15 @@ async function noden() {
   const platformIndex = 1;
   const deviceIndex = 0;
   const context = new addon.clContext({
-    platformIndex: platformIndex, 
+    platformIndex: platformIndex,
     deviceIndex: deviceIndex
   });
-  const platformInfo = context.getPlatformInfo();
+  const platformInfo = await context.getPlatformInfo();
   // console.log(JSON.stringify(platformInfo, null, 2));
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
 
   const colSpecRead = '709';
-  const colSpecWrite = '2020';
+  const colSpecWrite = '709';
   const width = 1920;
   const height = 1080;
 
@@ -55,7 +55,7 @@ async function noden() {
 
   const numBytesRGBA = width * height * 4 * 4;
   const rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
-  
+
   const v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'coarse');
 
   await v210Src.hostAccess('writeonly');
@@ -76,7 +76,7 @@ async function noden() {
 
   await v210Src.hostAccess('readonly');
   console.log('Compare returned', v210Src.compare(v210Dst));
-  
+
   return [v210Src, v210Dst];
 }
 noden()

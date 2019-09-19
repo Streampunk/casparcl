@@ -1,52 +1,53 @@
 const beamy = require('beamcoder')
 const macadam = require('macadam')
 const nodencl = require('nodencl');
-const v210_io = require('./v210_io.js');
+const rgbyuv = require('../process/rgbyuvPacker.js');
+const v210_io = require('../process/v210_io.js');
 const fs = require('fs').promises;
 const osc = require('osc')
 
-// const testImage = `
-// __constant sampler_t sampler1 =
-//       CLK_NORMALIZED_COORDS_FALSE
-//     | CLK_ADDRESS_CLAMP_TO_EDGE
-//     | CLK_FILTER_NEAREST;
-//
-// __constant sampler_t sampler2 =
-//       CLK_NORMALIZED_COORDS_FALSE
-//     | CLK_ADDRESS_CLAMP_TO_EDGE
-//     | CLK_FILTER_NEAREST;
-//
-// __kernel void
-//   testImage(__read_only image2d_t input1,
-// 						__read_only image2d_t input2,
-// 						float fl,
-//             __write_only image2d_t output) {
-//
-//     int x = get_global_id(0);
-//     int y = get_global_id(1);
-//     float4 in1 = read_imagef(input1, sampler1, (int2)(x,y));
-// 		float4 in2 = read_imagef(input2, sampler2, (int2)(x,y));
-// 		float rl = 1.0f - fl;
-//     write_imagef(output, (int2)(x, y),
-// 			(float4)(fl * in1.s0 + rl * in2.s0, fl * in1.s1 + rl * in2.s1, fl * in1.s2 + rl * in2.s2, 1.0f));
-//   }
-// `;
-
 const testImage = `
-__constant sampler_t smp =
+__constant sampler_t sampler1 =
       CLK_NORMALIZED_COORDS_FALSE
     | CLK_ADDRESS_CLAMP_TO_EDGE
     | CLK_FILTER_NEAREST;
 
-__kernel void mix(
-__read_only image2d_t s1, __read_only image2d_t s2, float l, __write_only image2d_t d) {
- int2 p=(int2)(get_global_id(0),get_global_id(1));
- float4 i=read_imagef(s1,smp,p);
- float4 j=read_imagef(s2,smp,p);
- float r=1-l;
- write_imagef(d,p,(float4)(l*i.s0+r*j.s0,l*i.s1+r*j.s1,l*i.s2+r*j.s2,1.0f));
-}
+__constant sampler_t sampler2 =
+      CLK_NORMALIZED_COORDS_FALSE
+    | CLK_ADDRESS_CLAMP_TO_EDGE
+    | CLK_FILTER_NEAREST;
+
+__kernel void
+  testImage(__read_only image2d_t input1,
+						__read_only image2d_t input2,
+						float fl,
+            __write_only image2d_t output) {
+
+    int x = get_global_id(0);
+    int y = get_global_id(1);
+    float4 in1 = read_imagef(input1, sampler1, (int2)(x,y));
+		float4 in2 = read_imagef(input2, sampler2, (int2)(x,y));
+		float rl = 1.0f - fl;
+    write_imagef(output, (int2)(x, y),
+			(float4)(fl * in1.s0 + rl * in2.s0, fl * in1.s1 + rl * in2.s1, fl * in1.s2 + rl * in2.s2, 1.0f));
+  }
 `;
+
+// const testImage = `
+// __constant sampler_t smp =
+//       CLK_NORMALIZED_COORDS_FALSE
+//     | CLK_ADDRESS_CLAMP_TO_EDGE
+//     | CLK_FILTER_NEAREST;
+//
+// __kernel void mix(
+// __read_only image2d_t s1, __read_only image2d_t s2, float l, __write_only image2d_t d) {
+//  int2 p=(int2)(get_global_id(0),get_global_id(1));
+//  float4 i=read_imagef(s1,smp,p);
+//  float4 j=read_imagef(s2,smp,p);
+//  float r=1-l;
+//  write_imagef(d,p,(float4)(l*i.s0+r*j.s0,l*i.s1+r*j.s1,l*i.s2+r*j.s2,1.0f));
+// }
+// `;
 
 async function run() {
 	const platformIndex = 0;
@@ -64,11 +65,13 @@ async function run() {
 	const width = 1920;
 	const height = 1080;
 
-	const v210Reader = new v210_io.reader(context, width, height, colSpecRead, colSpecRead);
-	await v210Reader.init();
+	const v210Loader1 = new rgbyuv.yuvLoader(context, colSpecRead, colSpecWrite, new v210_io.reader(width, height));
+  await v210Loader1.init();
+	const v210Loader2 = new rgbyuv.yuvLoader(context, colSpecRead, colSpecWrite, new v210_io.reader(width, height));
+  await v210Loader2.init();
 
-	const v210Writer = new v210_io.writer(context, width, height, colSpecWrite);
-	await v210Writer.init();
+  const v210Saver = new rgbyuv.yuvSaver(context, colSpecWrite, new v210_io.writer(width, height));
+  await v210Saver.init();
 
 	// const globalWorkItems = Uint32Array.from([ width, height ]);
 	const testImageProgram = await context.createProgram(testImage, {
@@ -94,18 +97,16 @@ async function run() {
 
 	async function processFrame(b1, b2, fl) {
 		let res = []
-		await v210Src1.hostAccess('writeonly')
-		b1.copy(v210Src1)
-		await v210Src2.hostAccess('writeonly')
-		b2.copy(v210Src2)
-		res[0] = await v210Reader.fromV210(v210Src1, rgbaDst1)
-		res[1] = await v210Reader.fromV210(v210Src2, rgbaDst2)
+		await v210Src1.hostAccess('writeonly', b1)
+		await v210Src2.hostAccess('writeonly', b2)
+		res[0] = await v210Loader1.fromYUV({ source: v210Src1, dest: rgbaDst1 })
+		res[1] = await v210Loader2.fromYUV({ source: v210Src2, dest: rgbaDst2 })
 		//await rgbaDst.hostAccess('readonly')
 		// dumpFloatBuf(rgbaDst, 1920, 2, 4);
 		res[2] = await testImageProgram.run({input1: rgbaDst1, input2: rgbaDst2, fl: fl, output: imageDst})
 		//await imageDst.hostAccess('readonly')
 		// dumpFloatBuf(imageDst, 1920, 2, 4);
-		res[3] = await v210Writer.toV210(imageDst, v210Dst)
+		res[3] = await v210Saver.toYUV({ source: imageDst, dest: v210Dst })
 		await v210Dst.hostAccess('readonly')
 		// v210_io.dumpBuf(v210Dst, 1920, 4);
 		// console.log(process.hrtime(lstamp))
@@ -162,4 +163,4 @@ async function run() {
 	}
 }
 
-run()
+run().catch(console.error)
