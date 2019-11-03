@@ -15,3 +15,33 @@ Using Node.js as the glue platform, the plan is mash up some existing technical 
 * SuperFly.tv CasparCG Connection library - a controlled way of getting from Node to Caspar.
 
 Experiments don't necessarily pan out. Resource is limited. Don't expect miracles. Watch this space!
+
+## Updates
+
+### 3rd November 2020
+
+Progress has been made since we set out on this project. See the video of a vision mixer built on this stack from the [EBU Open Source event 2019](https://tech.ebu.ch/home/publications/main/section-publication-main/section-publication-main/publicationList/2019/09/24/streampunk-beamcoder.html).
+
+* NodenCL working well on Nvidia and Intel GPUs ... typically significatly less than 25ms per frame on the GPU. Work is ongoing to optimise for AMD.
+* 10-bit YUV planar support added to NodenCL for integration with Beamcoder. 
+* sRGB colourspace support added in and out with support for raw 8-bit RGBA and BGRA.
+* [Elecular](https://github.com/Streampunk/elecular) project uses Electron as a headless graphics renderer for [Singular.live](https://www.singular.live/) graphics and Chrome browser as a previewer with HTTP interfaces.
+* Basic compositing of graphics demonstrated ... compositing preserves 10-bit pictures end-to-end, even though the graphics are 8-bit.
+* Highland not working well with Promises - failing to overlap async processing. A different approach is required ...
+
+Current work includes:
+
+* Writing a library for Node like Highland that works well with promises over media streams. This is a reworking of the [Redioactive](https://github.com/Streampunk/node-red-contrib-dynamorse-core/blob/master/util/Redioactive.js) component inside [dynamorse](https://github.com/Streampunk/node-red-contrib-dynamorse-core).
+* Multi-layer compositing.
+* AMD GPU optimisations.
+
+Next steps:
+
+* Quick and dirty _factor of 2_ scaling up and down.
+* Mixer operations similar to those from CasparCG - including arbitrary scaling
+* Bolting AMCP on the front of the stack.
+* HTTP/S optimisations based around [arachnid](https://github.com/Streampunk/arachnid).
+
+
+
+
