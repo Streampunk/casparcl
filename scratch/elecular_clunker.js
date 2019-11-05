@@ -103,7 +103,7 @@ let timer = (w) => new Promise((resolve) => {
 })
 
 async function init () {
-  const platformIndex = 1;
+  const platformIndex = 0;
   const deviceIndex = 0;
   const context = new addon.clContext({
     platformIndex: platformIndex,
@@ -168,26 +168,44 @@ async function init () {
 	let server = kapp.listen(3001);
 	process.on('SIGHUP', server.close)
 
-  let frame = await request('http://localhost:3000/', { encoding: null });
-  // let start = process.hrtime();
-	// let counter = 0;
-  let packet;
+	let result = []
+	let counter = 0
+
+	async function read() {
+		let packet
+		do (packet = await demuxer.read())
+		while (packet.stream_index !== 0);
+		return packet
+	}
+
+	async function waitForIt (t) {
+		return new Promise((resolve, reject) => {
+			setTimeout(resolve, t > 0 ? t : 0)
+		})
+	}
+
+	let start = process.hrtime();
+
 	while (true) {
-    // let start = process.hrtime();
-    do (packet = await demuxer.read())
-    while (packet.stream_index !== 0);
-    let frames = await decoder.decode(packet);
-    let packets = await encoder.encode(frames.frames[0]);
-    // let end = process.hrtime(start);
-    // console.log('FFmpeg:', end);
-
-    let frame = await request('http://localhost:3000/', { encoding: null });
-
-    await processFrame(packets.packets[0].data, frame);
-
-    // let end = process.hrtime(start);
-		// let wait = (40000000 * counter - end[1]) / 1000000 | 0;
-		// await timer(wait);
+		let work = []
+    let stamp = process.hrtime();
+		work[0] = read()
+		if (result.length >= 1) {
+     	work[1] = decoder.decode(result[0]);
+		}
+		if (result.length >= 2) {
+			work[2] = Promise.all([encoder.encode(result[1].frames[0]),
+				 request('http://localhost:3000/', { encoding: null })]);
+		}
+		if (result.length >= 3) {
+			// console.log(result[2])
+			work[3] = processFrame(result[2][0].packets[0].data, result[2][1])
+		}
+		result = await Promise.all(work)
+		let diff = process.hrtime(start)
+		let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) )
+		await waitForIt(wait)
+		console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`)
 	}
 };
 

@@ -142,8 +142,9 @@ async function run() {
 	let dm1 = await beamy.demuxer('file:../media/dpp/AS11_DPP_HD_EXAMPLE_1.mxf')
 	await dm1.seek({ time: 240.0 })
 	let dec1 = await beamy.decoder({ demuxer: dm1, stream_index: 0 })
+	console.log(dec1)
 	let dm2 = await beamy.demuxer('file:../media/dpp/AS11_DPP_HD_EXAMPLE_1.mxf')
-	await dm2.seek({ time: 360.0 })
+	await dm2.seek({ time: 340.0 })
 	let dec2 = await beamy.decoder({ demuxer: dm1, stream_index: 0 })
 
 	let rate1 = 1.0
