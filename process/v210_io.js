@@ -226,6 +226,27 @@ function fillBuf(buf, width, height) {
   return buf;
 }
 
+function dumpBufUnpack(buf, width, numPixels, numLines) {
+  const pitchBytes = getPitchBytes(width);
+  let yOff = 0;
+  for (let y=0; y<numLines; ++y) {
+    let xOff = 0;
+    let s = `Line ${y}: `;
+    for (let x=0; x<numPixels/6; ++x) {
+      w0 = buf.readUInt32LE(yOff + xOff);
+      w1 = buf.readUInt32LE(yOff + xOff + 4);
+      w2 = buf.readUInt32LE(yOff + xOff + 8);
+      w3 = buf.readUInt32LE(yOff + xOff + 12);
+      s += `${w0 & 0x3ff} ${(w0 >> 10) & 0x3ff} ${(w0 >> 20) & 0x3ff} ${(w1 & 0x3ff)}, `;
+      s += `${(w1 >> 10) & 0x3ff} ${(w1 >> 20) & 0x3ff} ${(w2 & 0x3ff)} ${(w2 >> 10) & 0x3ff}, `;
+      s += `${(w2 >> 20) & 0x3ff} ${(w3 & 0x3ff)} ${(w3 >> 10) & 0x3ff} ${(w3 >> 20) & 0x3ff}`;
+      xOff += 16;
+    }
+    console.log(s);
+    yOff += pitchBytes;
+  }   
+}
+
 function dumpBuf(buf, width, numLines) {
   let lineOff = 0;
   function getHex(off) { return buf.readUInt32LE(lineOff + off).toString(16); }
@@ -293,5 +314,6 @@ module.exports = {
 
   getPitchBytes,
   fillBuf,
-  dumpBuf
+  dumpBuf,
+  dumpBufUnpack
 };
