@@ -116,7 +116,7 @@ function fillBuf(buf, width, height) {
   const A=255
   for (let y=0; y<height; ++y) {
     let xOff = 0;
-    for (let x=0; x<width; x+=2) {
+    for (let x=0; x<width; ++x) {
       buf.writeUInt8(B, off + xOff++);
       buf.writeUInt8(G, off + xOff++);
       buf.writeUInt8(R, off + xOff++);
