@@ -103,7 +103,7 @@ let timer = (w) => new Promise((resolve) => {
 })
 
 async function init () {
-  const platformIndex = 0;
+  const platformIndex = 1;
   const deviceIndex = 0;
   const context = new addon.clContext({
     platformIndex: platformIndex,
@@ -151,7 +151,7 @@ async function init () {
   v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'coarse');
 
   // process one image line per work group
-  const workItemsPerGroup = (width + pixelsPerWorkItem - 1) / pixelsPerWorkItem;
+  const workItemsPerGroup = Math.ceil(width / pixelsPerWorkItem);
   const globalWorkItems = workItemsPerGroup * height;
   compProgram = await context.createProgram(compositeKernel, {
     name: 'composite',
