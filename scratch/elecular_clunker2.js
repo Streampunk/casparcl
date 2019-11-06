@@ -22,6 +22,8 @@ const rgbyuv = require('../process/rgbyuvPacker.js');
 const rgba8_io = require('../process/rgba8_io.js');
 const bgra8_io = require('../process/bgra8_io.js');
 const v210_io = require('../process/v210_io.js');
+const yuv422p10_io = require('../process/yuv422p10_io.js')
+const macadam = require('macadam')
 
 const compositeKernel = `
   __kernel void composite(__global float16* restrict bgIn,
@@ -64,6 +66,7 @@ let bgra8Loader;
 let v210Loader;
 let v210Saver;
 let v210Src;
+let srcs;
 let bgra8Src;
 let rgbaBG;
 let rgbaOV;
@@ -72,14 +75,21 @@ let rgbaDst;
 let v210Dst;
 let compProgram;
 let lastBuf;
+let lumaBytes;
+let chromaBytes;
 
 async function processFrame(bg, overlay) {
   // let start = process.hrtime();
-  await v210Src.hostAccess('writeonly', bg);
+	await Promise.all([
+		srcs[0].hostAccess('writeonly', bg[0].slice(0, lumaBytes)),
+		srcs[1].hostAccess('writeonly', bg[1].slice(0, chromaBytes)),
+		srcs[2].hostAccess('writeonly', bg[2].slice(0, chromaBytes))
+	])
+
   await bgra8Src.hostAccess('writeonly', overlay);
 
   let timings;
-  timings = await v210Loader.fromYUV({ source: v210Src, dest: rgbaBG });
+  timings = await yuv422p10Loader.fromYUV({ sources: srcs, dest: rgbaBG });
   // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
   timings = await bgra8Loader.fromRGB({ source: bgra8Src, dest: rgbaOV });
@@ -92,7 +102,7 @@ async function processFrame(bg, overlay) {
   // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
   await v210Dst.hostAccess('readonly');
-  v210Dst.copy(lastBuf);
+  // v210Dst.copy(lastBuf);
 
   // let end = process.hrtime(start);
   // console.log('OpenCL:', end);
@@ -103,7 +113,7 @@ let timer = (w) => new Promise((resolve) => {
 })
 
 async function init () {
-  const platformIndex = 1;
+  const platformIndex = 1
   const deviceIndex = 0;
   const context = new addon.clContext({
     platformIndex: platformIndex,
@@ -125,30 +135,38 @@ async function init () {
   };
   let encoder = beamcoder.encoder(encParams);
 
-  const bgColSpecRead = '709';
+	const bgColSpecRead = '709';
   const ovColSpecRead = 'sRGB';
   const colSpecWrite = '709';
 
-  v210Loader = new rgbyuv.yuvLoader(context, bgColSpecRead, colSpecWrite, new v210_io.reader(width, height));
-  await v210Loader.init();
+  yuv422p10Loader = new rgbyuv.yuvLoader(context, bgColSpecRead, colSpecWrite,  new yuv422p10_io.reader(width, height));
+  await yuv422p10Loader.init();
   v210Saver = new rgbyuv.yuvSaver(context, colSpecWrite, new v210_io.writer(width, height));
   await v210Saver.init();
 
   bgra8Loader = new rgbrgb.rgbLoader(context, ovColSpecRead, colSpecWrite, new bgra8_io.reader(width, height));
   await bgra8Loader.init();
 
-  const numBytesV210 = v210_io.getPitchBytes(width) * height;
-  v210Src = await context.createBuffer(numBytesV210, 'readonly', 'fine');
+  // const numBytesV210 = v210_io.getPitchBytes(width) * height;
+  // v210Src = await context.createBuffer(numBytesV210, 'readonly', 'coarse');
+	lumaBytes = yuv422p10_io.getPitchBytes(width) * height;
+	chromaBytes = lumaBytes / 2;
+	const numBytesV210 = v210_io.getPitchBytes(width) * height;
 
+	srcs = [
+		await context.createBuffer(lumaBytes, 'readonly', 'coarse'),
+		await context.createBuffer(chromaBytes, 'readonly', 'coarse'),
+		await context.createBuffer(chromaBytes, 'readonly', 'coarse')
+	];
   const numBytesBGRA8 = bgra8_io.getPitchBytes(width) * height;
-  bgra8Src = await context.createBuffer(numBytesBGRA8, 'readonly', 'fine');
+  bgra8Src = await context.createBuffer(numBytesBGRA8, 'readonly', 'coarse');
 
   const numBytesRGBA = width * height * 4 * 4;
-  rgbaBG = await context.createBuffer(numBytesRGBA, 'readwrite', 'fine');
-  rgbaOV = await context.createBuffer(numBytesRGBA, 'readwrite', 'fine');
-  rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'fine');
+  rgbaBG = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
+  rgbaOV = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
+  rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
 
-  v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'fine');
+  v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'coarse');
 
   // process one image line per work group
   const workItemsPerGroup = Math.ceil(width / pixelsPerWorkItem);
@@ -161,33 +179,57 @@ async function init () {
 
   lastBuf = Buffer.alloc(numBytesV210);
 
-	kapp.use(async ctx => {
-		ctx.body = lastBuf;
+	// kapp.use(async ctx => {
+	// 	ctx.body = lastBuf;
+	// })
+	//
+	// let server = kapp.listen(3001);
+	// process.on('SIGHUP', server.close)
+
+	let result = []
+	let counter = 0
+
+	async function read() {
+		let packet
+		do (packet = await demuxer.read())
+		while (packet.stream_index !== 0);
+		return packet
+	}
+
+	async function waitForIt (t) {
+		return new Promise((resolve, reject) => {
+			setTimeout(resolve, t > 0 ? t : 0)
+		})
+	}
+
+	let playback = await macadam.playback({
+  	deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
+  	displayMode: macadam.bmdModeHD1080i50,
+  	pixelFormat: macadam.bmdFormat10BitYUV
 	})
 
-	let server = kapp.listen(3001);
-	process.on('SIGHUP', server.close)
+	let start = process.hrtime();
 
-  let frame = await request('http://localhost:3000/', { encoding: null });
-  // let start = process.hrtime();
-	// let counter = 0;
-  let packet;
 	while (true) {
-    // let start = process.hrtime();
-    do (packet = await demuxer.read())
-    while (packet.stream_index !== 0);
-    let frames = await decoder.decode(packet);
-    let packets = await encoder.encode(frames.frames[0]);
-    // let end = process.hrtime(start);
-    // console.log('FFmpeg:', end);
-
-    let frame = await request('http://localhost:3000/', { encoding: null });
-
-    await processFrame(packets.packets[0].data, frame);
-
-    // let end = process.hrtime(start);
-		// let wait = (40000000 * counter - end[1]) / 1000000 | 0;
-		// await timer(wait);
+		let work = []
+    let stamp = process.hrtime();
+		work[0] = read()
+		if (result.length >= 1) {
+     	work[1] = Promise.all([decoder.decode(result[0]),
+				 request('http://localhost:3000/', { encoding: null })]);;
+		}
+		if (result.length >= 2) {
+			// console.log(result[2])
+			work[2] = processFrame(result[1][0].frames[0].data, result[1][1])
+		}
+		if (result.length >= 3) {
+			work[3] = playback.displayFrame(v210Dst)
+		}
+		result = await Promise.all(work)
+		let diff = process.hrtime(start)
+		let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) )
+		await waitForIt(wait)
+		console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`)
 	}
 };
 
