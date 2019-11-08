@@ -1,6 +1,6 @@
 {
   "name": "casparcl",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Implementing the features of CasparCG with Node.JS and OpenCL.",
   "main": "dist/index.js",
   "repository": "https://github.com/Streampunk/casparcl.git",
@@ -12,7 +12,7 @@
     "beamcoder": "^0.3.4",
     "highland": "^2.13.5",
     "macadam": "^2.0.9",
-    "nodencl": "^1.0.1",
+    "nodencl": "^1.1.0",
     "osc": "^2.3.1",
     "request": "^2.88.0",
     "request-promise-native": "^1.0.7"
