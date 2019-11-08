@@ -25,7 +25,56 @@ const v210_io = require('../process/v210_io.js');
 const yuv422p10_io = require('../process/yuv422p10_io.js')
 const macadam = require('macadam')
 
+const resizeKernel = `
+  __constant sampler_t samplerIn =
+    CLK_NORMALIZED_COORDS_TRUE |
+    CLK_ADDRESS_CLAMP |
+    CLK_FILTER_LINEAR;
+
+  __constant sampler_t samplerOut =
+    CLK_NORMALIZED_COORDS_FALSE |
+    CLK_ADDRESS_CLAMP |
+    CLK_FILTER_NEAREST;
+
+  __kernel void resizeImage(__read_only  image2d_t input,
+                            __write_only image2d_t output) {
+    int w = get_image_width(output);
+    int h = get_image_height(output);
+
+    int outX = get_global_id(0);
+    int outY = get_global_id(1);
+    int2 posOut = {outX, outY};
+
+    float inX = outX / (float) w;
+    float inY = outY / (float) h;
+    float2 posIn = (float2) (inX, inY);
+
+    float4 in = read_imagef(input, samplerIn, posIn);
+    write_imagef(output, posOut, in);
+  }
+`;
+
 const compositeKernel = `
+  __constant sampler_t sampler1 =
+        CLK_NORMALIZED_COORDS_FALSE
+      | CLK_ADDRESS_CLAMP_TO_EDGE
+      | CLK_FILTER_NEAREST;
+
+  __kernel void
+    compositeImage(__read_only image2d_t bgIn,
+                   __read_only image2d_t ovIn,
+                   __write_only image2d_t output) {
+
+    int x = get_global_id(0);
+    int y = get_global_id(1);
+    float4 bg = read_imagef(bgIn, sampler1, (int2)(x,y));
+    float4 ov = read_imagef(ovIn, sampler1, (int2)(x,y));
+    float k = 1.0f - ov.s3;
+    float4 k4 = (float4)(k, k, k, 0.0f);
+    float4 out = fma(bg, k4, ov);
+    write_imagef(output, (int2)(x, y), out);
+  };
+
   __kernel void composite(__global float16* restrict bgIn,
                           __global float16* restrict ovIn,
                           __global float16* restrict output,
@@ -62,19 +111,20 @@ const height = 1080;
 const pixelsPerWorkItem = 128;
 
 let bgra8Loader;
-// let bgra8Saver;
-let v210Loader;
+let webSaver;
 let v210Saver;
-let v210Src;
 let srcs;
 let bgra8Src;
 let rgbaBG;
 let rgbaOV;
 let rgbaDst;
-// let bgra8Dst;
+let rgbaDstWeb;
 let v210Dst;
+let webDst;
+let lastWeb;
 let compProgram;
-let lastBuf;
+let compImageProgram;
+let resizeProgram;
 let lumaBytes;
 let chromaBytes;
 
@@ -95,14 +145,22 @@ async function processFrame(bg, overlay) {
   timings = await bgra8Loader.fromRGB({ source: bgra8Src, dest: rgbaOV });
   // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
-  timings = await compProgram.run({ bgIn: rgbaBG, ovIn: rgbaOV, output: rgbaDst, width: width, ppwi: pixelsPerWorkItem });
+  // timings = await compProgram.run({ bgIn: rgbaBG, ovIn: rgbaOV, output: rgbaDst, width: width, ppwi: pixelsPerWorkItem });
+  timings = await compImageProgram.run({ bgIn: rgbaBG, ovIn: rgbaOV, output: rgbaDst });
+  // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
+
+  timings = await resizeProgram.run({ input: rgbaDst, output: rgbaDstWeb });
   // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
   timings = await v210Saver.toYUV({ source: rgbaDst, dest: v210Dst });
   // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
 
   await v210Dst.hostAccess('readonly');
-  // v210Dst.copy(lastBuf);
+
+  timings = await webSaver.toRGB({ source: rgbaDstWeb, dest: webDst });
+  // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
+
+  await webDst.hostAccess('readonly');
 
   // let end = process.hrtime(start);
   // console.log('OpenCL:', end);
@@ -138,6 +196,7 @@ async function init () {
 	const bgColSpecRead = '709';
   const ovColSpecRead = 'sRGB';
   const colSpecWrite = '709';
+  const webColSpecWrite = 'sRGB';
 
   yuv422p10Loader = new rgbyuv.yuvLoader(context, bgColSpecRead, colSpecWrite,  new yuv422p10_io.reader(width, height));
   await yuv422p10Loader.init();
@@ -146,9 +205,9 @@ async function init () {
 
   bgra8Loader = new rgbrgb.rgbLoader(context, ovColSpecRead, colSpecWrite, new bgra8_io.reader(width, height));
   await bgra8Loader.init();
+  webSaver = new rgbrgb.rgbSaver(context, webColSpecWrite, new rgba8_io.writer(width / 2, height / 2));
+  await webSaver.init();
 
-  // const numBytesV210 = v210_io.getPitchBytes(width) * height;
-  // v210Src = await context.createBuffer(numBytesV210, 'readonly', 'coarse');
 	lumaBytes = yuv422p10_io.getPitchBytes(width) * height;
 	chromaBytes = lumaBytes / 2;
 	const numBytesV210 = v210_io.getPitchBytes(width) * height;
@@ -162,11 +221,13 @@ async function init () {
   bgra8Src = await context.createBuffer(numBytesBGRA8, 'readonly', 'coarse');
 
   const numBytesRGBA = width * height * 4 * 4;
-  rgbaBG = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
-  rgbaOV = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
-  rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse');
+  rgbaBG = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+  rgbaOV = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+  rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+  rgbaDstWeb = await context.createBuffer(width * height * 4, 'readwrite', 'coarse', { width: width / 2, height: height / 2 });
 
   v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'coarse');
+  webDst = await context.createBuffer(numBytesBGRA8 / 4, 'writeonly', 'coarse');
 
   // process one image line per work group
   const workItemsPerGroup = Math.ceil(width / pixelsPerWorkItem);
@@ -177,14 +238,24 @@ async function init () {
     workItemsPerGroup: workItemsPerGroup
   });
 
-  lastBuf = Buffer.alloc(numBytesV210);
+	compImageProgram = await context.createProgram(compositeKernel, {
+    name: 'compositeImage',
+		globalWorkItems: Uint32Array.from([ width, height ])
+	});
 
-	// kapp.use(async ctx => {
-	// 	ctx.body = lastBuf;
-	// })
-	//
-	// let server = kapp.listen(3001);
-	// process.on('SIGHUP', server.close)
+	resizeProgram = await context.createProgram(resizeKernel, {
+    name: 'resizeImage',
+		globalWorkItems: Uint32Array.from([ width / 2, height / 2 ])
+	});
+
+  lastWeb = Buffer.alloc(numBytesBGRA8 / 4);
+
+	kapp.use(async ctx => {
+		ctx.body = lastWeb;
+	})
+
+	let server = kapp.listen(3001);
+	process.on('SIGHUP', server.close)
 
 	let result = []
 	let counter = 0
@@ -223,6 +294,7 @@ async function init () {
 			work[2] = processFrame(result[1][0].frames[0].data, result[1][1])
 		}
 		if (result.length >= 3) {
+      webDst.copy(lastWeb);
 			work[3] = playback.displayFrame(v210Dst)
 		}
 		result = await Promise.all(work)
