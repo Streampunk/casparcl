@@ -72,7 +72,7 @@ const colParams = {
 };
 
 function gamma2linearLUT(colSpec) {
-  if (!colParams.hasOwnProperty(colSpec)) {
+  if (!(colSpec in colParams)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -95,7 +95,7 @@ function gamma2linearLUT(colSpec) {
 }
 
 function linear2gammaLUT(colSpec) {
-  if (!colParams.hasOwnProperty(colSpec)) {
+  if (!(colSpec in colParams)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -117,7 +117,7 @@ function linear2gammaLUT(colSpec) {
 }
 
 function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
-  if (!colParams.hasOwnProperty(colSpec)) {
+  if (!(colSpec in colParams)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -169,7 +169,7 @@ function ycbcr2rgbMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
 }
 
 function rgb2ycbcrMatrix(colSpec, numBits, lumaBlack, lumaWhite, chrRange) {
-  if (!colParams.hasOwnProperty(colSpec)) {
+  if (!(colSpec in colParams)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -225,7 +225,7 @@ function rgb2rgbMatrix(srcColSpec, dstColSpec) {
 }
 
 function rgb2xyzMatrix(colSpec) {
-  if (!colParams.hasOwnProperty(colSpec)) {
+  if (!(colSpec in colParams)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
@@ -253,7 +253,7 @@ function rgb2xyzMatrix(colSpec) {
 }
 
 function xyz2rgbMatrix(colSpec) {
-  if (!colParams.hasOwnProperty(colSpec)) {
+  if (!(colSpec in colParams)) {
     console.error(`Unrecognised colourspace ${colSpec} - defaulting to BT.709`);
     colSpec = '709';
   }
