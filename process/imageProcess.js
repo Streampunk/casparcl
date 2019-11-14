@@ -23,6 +23,7 @@ function process(context, outpuWidth, outputHeight, impl) {
 }
 
 process.prototype.init = async function() {
+  await this.impl.init(this.context);
   this.processProgram = await this.context.createProgram(this.impl.kernel, {
     name: this.impl.getKernelName(),
     globalWorkItems: Uint32Array.from([ this.outputWidth, this.outputHeight ]),
@@ -30,7 +31,7 @@ process.prototype.init = async function() {
 };
 
 process.prototype.run = async function(params) {
-  let kernelParams = this.impl.getKernelParams(params);
+  let kernelParams = await this.impl.getKernelParams(params);
   return await this.processProgram.run(kernelParams);
 };
 

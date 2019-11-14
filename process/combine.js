@@ -58,30 +58,31 @@ const combineKernel = `
 `;
 
 function combine(params) {
-  this.numInputs = params.numInputs;
-  if (!(this.numInputs && (this.numInputs > 1) && (this.numInputs < 4)))
-    throw('combiner needs a numInputs property - two or three inputs currently supported');
+  this.numOverlays = params.numOverlays;
+  if (!(this.numOverlays && (this.numOverlays > 0) && (this.numOverlays < 3)))
+    throw('combiner needs a numOverlays property - one or two overlays currently supported');
 
-  switch (this.numInputs) {
-    case 2: this.name = 'twoInputs'; break;
-    case 3: this.name = 'threeInputs'; break;
+  switch (this.numOverlays) {
+    case 1: this.name = 'twoInputs'; break;
+    case 2: this.name = 'threeInputs'; break;
   }
   return this;
 }
 
+combine.prototype.init = async function(context) {}
 combine.prototype.kernel = combineKernel;
 combine.prototype.getKernelName = function() { return this.name; }
-combine.prototype.getKernelParams = function(params) {
+combine.prototype.getKernelParams = async function(params) {
   let kernelParams = {
     bgIn: params.bgIn,
     output: params.output,
   };
 
-  switch (this.numInputs) {
-    case 2:
+  switch (this.numOverlays) {
+    case 1:
       kernelParams.ovIn = params.ovIn;
       break;
-    case 3:
+    case 2:
       kernelParams.ov0In = params.ovIn[0];
       kernelParams.ov1In = params.ovIn[1];
       break;

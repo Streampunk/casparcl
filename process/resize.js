@@ -24,8 +24,14 @@ const resizeKernel = `
     CLK_ADDRESS_CLAMP |
     CLK_FILTER_NEAREST;
 
-  __kernel void resize(__read_only  image2d_t input,
-                       __write_only image2d_t output) {
+  __kernel void resize(
+    __read_only image2d_t input,
+    __private float scale,
+    __private float offsetX,
+    __private float offsetY,
+    __global float* restrict flip,
+    __write_only image2d_t output) {
+
     int w = get_image_width(output);
     int h = get_image_height(output);
 
@@ -33,9 +39,12 @@ const resizeKernel = `
     int outY = get_global_id(1);
     int2 posOut = {outX, outY};
 
-    float inX = outX / (float) w;
-    float inY = outY / (float) h;
-    float2 posIn = (float2) (inX, inY);
+    float2 inPos = (float2)(outX / (float) w, outY / (float) h);
+    float centreOffX = (-0.5f - offsetX) / scale + 0.5f;
+    float centreOffY = (-0.5f - offsetY) / scale + 0.5f;
+    float2 off = (float2)(fma(centreOffX, flip[1], flip[0]), fma(centreOffY, flip[3], flip[2]));
+    float2 mul = (float2)(flip[1] / scale, flip[3] / scale);
+    float2 posIn = fma(inPos, mul, off);
 
     float4 in = read_imagef(input, samplerIn, posIn);
     write_imagef(output, posOut, in);
@@ -47,11 +56,39 @@ function resize(params) {
   return this;
 }
 
+resize.prototype.init = async function(context) {
+  this.flipVals = await context.createBuffer(16, 'readonly', 'none');
+  let flipArr = Float32Array.from([0.0, 1.0, 0.0, 1.0]);
+  await this.flipVals.hostAccess('writeonly');
+  Buffer.from(flipArr.buffer).copy(this.flipVals);
+}
+
 resize.prototype.kernel = resizeKernel;
 resize.prototype.getKernelName = function() { return this.name; }
-resize.prototype.getKernelParams = function(params) {
+resize.prototype.getKernelParams = async function(params) {
+  await this.flipVals.hostAccess('writeonly');
+  let flipArr = Float32Array.from([
+    params.flipH ?  1.0 : 0.0,
+    params.flipH ? -1.0 : 1.0,
+    params.flipV ?  1.0 : 0.0,
+    params.flipV ? -1.0 : 1.0]);
+  Buffer.from(flipArr.buffer).copy(this.flipVals);
+
+  if (params.scale && !(params.scale > 0.0))
+    throw('resize scale factor must be greater than zero');
+
+  if (params.offsetX && !((params.offsetX >= -1.0) && (params.offsetX <= 1.0)))
+    throw('resize offsetX must be between -1.0 and +1.0');
+
+  if (params.offsetY && !((params.offsetY >= -1.0) && (params.offsetY <= 1.0)))
+    throw('resize offsetX must be between -1.0 and +1.0');
+
   return {
     input: params.input,
+    scale: params.scale || 1.0,
+    offsetX: params.offsetX || 0.0,
+    offsetY: params.offsetY || 0.0,
+    flip: this.flipVals,
     output: params.output,
   }
 }
