@@ -53,26 +53,34 @@ const resizeKernel = `
 
 function resize(params) {
   this.name = 'resize';
+  this.flipH = false;
+  this.flipV = false;
   return this;
+}
+
+resize.prototype.updateFlip = async function(flipH, flipV) {
+  this.flipH = flipH;
+  this.flipV = flipV;
+  let flipArr = Float32Array.from([
+    this.flipH ?  1.0 : 0.0,
+    this.flipH ? -1.0 : 1.0,
+    this.flipV ?  1.0 : 0.0,
+    this.flipV ? -1.0 : 1.0
+  ]);
+  await this.flipVals.hostAccess('writeonly');
+  Buffer.from(flipArr.buffer).copy(this.flipVals);
 }
 
 resize.prototype.init = async function(context) {
   this.flipVals = await context.createBuffer(16, 'readonly', 'none');
-  let flipArr = Float32Array.from([0.0, 1.0, 0.0, 1.0]);
-  await this.flipVals.hostAccess('writeonly');
-  Buffer.from(flipArr.buffer).copy(this.flipVals);
+  this.updateFlip(false, false);
 }
 
 resize.prototype.kernel = resizeKernel;
 resize.prototype.getKernelName = function() { return this.name; }
 resize.prototype.getKernelParams = async function(params) {
-  await this.flipVals.hostAccess('writeonly');
-  let flipArr = Float32Array.from([
-    params.flipH ?  1.0 : 0.0,
-    params.flipH ? -1.0 : 1.0,
-    params.flipV ?  1.0 : 0.0,
-    params.flipV ? -1.0 : 1.0]);
-  Buffer.from(flipArr.buffer).copy(this.flipVals);
+  if (!((this.flipH === params.flipH) && (this.flipV === params.flipV)))
+    await this.updateFlip(params.flipH, params.flipV);
 
   if (params.scale && !(params.scale > 0.0))
     throw('resize scale factor must be greater than zero');
