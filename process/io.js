@@ -18,6 +18,7 @@ const rgbyuv = require('./rgbyuvPacker.js');
 const rgba8_io = require('./rgba8_io.js');
 const bgra8_io = require('./bgra8_io.js');
 const v210_io = require('./v210_io.js');
+const yuv422p8_io = require('./yuv422p8_io.js');
 const yuv422p10_io = require('./yuv422p10_io.js');
 const imageProcess = require('../process/imageProcess.js');
 const resize = require('../process/resize.js');
@@ -35,9 +36,11 @@ function toRGBA(context, width, height, format) {
 
 toRGBA.prototype.init = async function(params) {
   switch (this.format) {
+    case 'yuv422p8':
     case 'yuv422p10':
-      this.loader = new rgbyuv.yuvLoader(this.context, params.colSpecRead, params.colSpecWrite, new yuv422p10_io.reader(this.width, this.height));
-      const lumaBytes = yuv422p10_io.getPitchBytes(this.width) * this.height;
+      const impl = 'yuv422p8' == this.format ? yuv422p8_io : yuv422p10_io
+      this.loader = new rgbyuv.yuvLoader(this.context, params.colSpecRead, params.colSpecWrite, new impl.reader(this.width, this.height));
+      const lumaBytes = impl.getPitchBytes(this.width) * this.height;
       this.numBytes = [ lumaBytes, lumaBytes / 2, lumaBytes / 2 ];
       this.srcs = [
         await this.context.createBuffer(this.numBytes[0], 'readonly', 'coarse'),
@@ -72,6 +75,7 @@ toRGBA.prototype.processFrame = async function(input, output) {
 
   let timings;
   switch (this.format) {
+    case 'yuv422p8':
     case 'yuv422p10':
       timings = await this.loader.fromYUV({ sources: this.srcs, dest: output });
       break;
@@ -96,9 +100,11 @@ function fromRGBA(context, width, height, format) {
 
 fromRGBA.prototype.init = async function(params) {
   switch (this.format) {
+    case 'yuv422p8':
     case 'yuv422p10':
-      this.saver = new rgbyuv.yuvSaver(this.context, params.colSpec, new yuv422p10_io.writer(this.width, this.height));
-      const lumaBytes = yuv422p10_io.getPitchBytes(this.width) * this.height;
+      const impl = 'yuv422p8' == this.format ? yuv422p8_io : yuv422p10_io
+      this.saver = new rgbyuv.yuvSaver(this.context, params.colSpec, new impl.writer(this.width, this.height));
+      const lumaBytes = impl.getPitchBytes(this.width) * this.height;
       this.numBytes = [ lumaBytes, lumaBytes / 2, lumaBytes / 2 ];
       break;
     case 'v210':
