@@ -55,32 +55,34 @@ function resize(params) {
   this.name = 'resize';
   this.flipH = false;
   this.flipV = false;
+  this.flipArr = Float32Array.from([ 0.0, 1.0, 0.0, 1.0 ]);
+  this.flipArrBytes = this.flipArr.length * this.flipArr.BYTES_PER_ELEMENT;
   return this;
 }
 
-resize.prototype.updateFlip = async function(flipH, flipV) {
+resize.prototype.updateFlip = async function(flipH, flipV, clQueue) {
   this.flipH = flipH;
   this.flipV = flipV;
-  let flipArr = Float32Array.from([
+  this.flipArr = Float32Array.from([
     this.flipH ?  1.0 : 0.0,
     this.flipH ? -1.0 : 1.0,
     this.flipV ?  1.0 : 0.0,
     this.flipV ? -1.0 : 1.0
   ]);
-  await this.flipVals.hostAccess('writeonly');
-  Buffer.from(flipArr.buffer).copy(this.flipVals);
+  await this.flipVals.hostAccess('writeonly', clQueue, Buffer.from(this.flipArr.buffer));
+  return this.flipVals.hostAccess('none', clQueue);
 }
 
 resize.prototype.init = async function(context) {
-  this.flipVals = await context.createBuffer(16, 'readonly', 'none');
-  this.updateFlip(false, false);
+  this.flipVals = await context.createBuffer(this.flipArrBytes, 'readonly', 'coarse');
+  return this.updateFlip(false, false, context.queue.load);
 }
 
 resize.prototype.kernel = resizeKernel;
 resize.prototype.getKernelName = function() { return this.name; }
-resize.prototype.getKernelParams = async function(params) {
+resize.prototype.getKernelParams = async function(params, clQueue) {
   if (!((this.flipH === params.flipH) && (this.flipV === params.flipV)))
-    await this.updateFlip(params.flipH, params.flipV);
+    await this.updateFlip(params.flipH, params.flipV, clQueue);
 
   if (params.scale && !(params.scale > 0.0))
     throw('resize scale factor must be greater than zero');

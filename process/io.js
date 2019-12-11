@@ -42,26 +42,18 @@ toRGBA.prototype.init = async function(params) {
       this.loader = new rgbyuv.yuvLoader(this.context, params.colSpecRead, params.colSpecWrite, new impl.reader(this.width, this.height));
       const lumaBytes = impl.getPitchBytes(this.width) * this.height;
       this.numBytes = [ lumaBytes, lumaBytes / 2, lumaBytes / 2 ];
-      this.srcs = [
-        await this.context.createBuffer(this.numBytes[0], 'readonly', 'coarse'),
-        await this.context.createBuffer(this.numBytes[1], 'readonly', 'coarse'),
-        await this.context.createBuffer(this.numBytes[2], 'readonly', 'coarse')
-      ];
       break;
     case 'v210':
       this.loader = new rgbyuv.yuvLoader(this.context, params.colSpecRead, params.colSpecWrite, new v210_io.reader(this.width, this.height));
       this.numBytes = [ v210_io.getPitchBytes(this.width) * this.height ];
-      this.srcs = [ await this.context.createBuffer(this.numBytes[0], 'readonly', 'coarse') ];
       break;
     case 'rgba8':
       this.loader = new rgbrgb.rgbLoader(this.context, params.colSpecRead, params.colSpecWrite, new rgba8_io.reader(this.width, this.height));
       this.numBytes = [ rgba8_io.getPitchBytes(this.width) * this.height ];
-      this.srcs = [ await this.context.createBuffer(this.numBytes[0], 'readonly', 'coarse') ];
       break;
     case 'bgra8':
       this.loader = new rgbrgb.rgbLoader(this.context, params.colSpecRead, params.colSpecWrite, new bgra8_io.reader(this.width, this.height));
       this.numBytes = [ bgra8_io.getPitchBytes(this.width) * this.height ];
-      this.srcs = [ await this.context.createBuffer(this.numBytes[0], 'readonly', 'coarse') ];
       break;
     default:
       throw(`unrecognised input format '${this.format}'`);
@@ -69,22 +61,50 @@ toRGBA.prototype.init = async function(params) {
   await this.loader.init();
 }
 
-toRGBA.prototype.processFrame = async function(input, output) {
-  const inputs = Array.isArray(input) ? input : [ input ];
-  await Promise.all(this.srcs.map((src, i) => src.hostAccess('writeonly', inputs[i].slice(0, this.numBytes[i]))));
-
-  let timings;
+toRGBA.prototype.createBuffers = async function() {
+  let buffers;
   switch (this.format) {
     case 'yuv422p8':
     case 'yuv422p10':
-      timings = await this.loader.fromYUV({ sources: this.srcs, dest: output });
+      buffers = [
+        await this.context.createBuffer(this.numBytes[0], 'readonly', 'coarse'),
+        await this.context.createBuffer(this.numBytes[1], 'readonly', 'coarse'),
+        await this.context.createBuffer(this.numBytes[2], 'readonly', 'coarse')
+      ];
       break;
     case 'v210':
-      timings = await this.loader.fromYUV({ source: this.srcs[0], dest: output });
+    case 'rgba8':
+    case 'bgra8':
+      buffers = [ await this.context.createBuffer(this.numBytes[0], 'readonly', 'coarse') ];
       break;
     default:
-      timings = await this.loader.fromRGB({ source: this.srcs[0], dest: output });
+      throw(`unrecognised input format '${this.format}'`);
   }
+  return buffers;
+}
+
+toRGBA.prototype.loadFrame = async function(input, sources, clQueue) {
+  const inputs = Array.isArray(input) ? input : [ input ];
+  return Promise.all(sources.map(async (src, i) => {
+    await src.hostAccess('writeonly', clQueue, inputs[i].slice(0, this.numBytes[i]));
+    return src.hostAccess('none', clQueue);
+  }));
+}
+
+toRGBA.prototype.processFrame = async function(sources, output, clQueue) {
+  let result;
+  switch (this.format) {
+    case 'yuv422p8':
+    case 'yuv422p10':
+      result = this.loader.fromYUV({ sources: sources, dest: output }, clQueue);
+      break;
+    case 'v210':
+      result = this.loader.fromYUV({ source: sources[0], dest: output }, clQueue);
+      break;
+    default:
+      result = this.loader.fromRGB({ source: sources[0], dest: output }, clQueue);
+  }
+  return result;
 }
 
 function fromRGBA(context, width, height, format) {
@@ -134,29 +154,32 @@ fromRGBA.prototype.init = async function(params) {
   }
 }
 
-fromRGBA.prototype.processFrame = async function(input, output) {
+fromRGBA.prototype.processFrame = async function(input, output, clQueue) {
   const outputs = Array.isArray(output) ? output : [ output ];
-  let timings;
+  let result;
 
   let source = input;
   if (this.resizer) {
-    timings = await this.resizer.run({ input: input, output: this.rgbaSz });
-    // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
+    await this.resizer.run({ input: input, output: this.rgbaSz }, clQueue);
     source = this.rgbaSz;
   }
 
   switch (this.format) {
     case 'yuv422p10':
-      timings = await this.saver.toYUV({ source: source, dest: outputs });
+      result = this.saver.toYUV({ source: source, dest: outputs }, clQueue);
       break;
     case 'v210':
-      timings = await this.saver.toYUV({ source: source, dest: outputs[0] });
+      result = this.saver.toYUV({ source: source, dest: outputs[0] }, clQueue);
       break;
     default:
-      timings = await this.saver.toRGB({ source: source, dest: outputs[0] });
+      result = this.saver.toRGB({ source: source, dest: outputs[0] }, clQueue);
   }
-  // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
-  await Promise.all(outputs.map(op => op.hostAccess('readonly')));
+  return result;
+}
+
+fromRGBA.prototype.saveFrame = async function(output, clQueue) {
+  const outputs = Array.isArray(output) ? output : [ output ];
+  return Promise.all(outputs.map(op => op.hostAccess('readonly', clQueue)));
 }
 
 module.exports = {

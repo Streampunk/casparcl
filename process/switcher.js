@@ -50,27 +50,22 @@ vidSwitch.prototype.init = async function() {
   this.rgbaMx = await this.context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: this.width, height: this.height });
 }
 
-vidSwitch.prototype.processFrame = async function(inParams, mixParams, overlays, output) {
-  let timings;
+vidSwitch.prototype.processFrame = async function(inParams, mixParams, overlays, output, clQueue) {
   inParams[0].output = this.rgbaSz0;
-  timings = await this.sizer0.run(inParams[0]);
-  // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
+  await this.sizer0.run(inParams[0], clQueue);
 
   if (this.numInputs > 1) {
     inParams[1].output = this.rgbaSz1;
-    timings = await this.sizer1.run(inParams[1]);
+    await this.sizer1.run(inParams[1], clQueue);
 
     if (mixParams.wipe) {
-      timings = await this.wiper.run({ input0: this.rgbaSz0, input1: this.rgbaSz1, wipe: mixParams.frac, output: this.rgbaMx });
-      // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
+      await this.wiper.run({ input0: this.rgbaSz0, input1: this.rgbaSz1, wipe: mixParams.frac, output: this.rgbaMx }, clQueue);
     } else {
-      timings = await this.mixer.run({ input0: this.rgbaSz0, input1: this.rgbaSz1, mix: mixParams.frac, output: this.rgbaMx });
-      // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
+      await this.mixer.run({ input0: this.rgbaSz0, input1: this.rgbaSz1, mix: mixParams.frac, output: this.rgbaMx }, clQueue);
     }
   }
 
-  timings = await this.combiner.run({ bgIn: this.rgbaMx, ovIn: overlays, output: output });
-  // console.log(`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`);
+  return await this.combiner.run({ bgIn: this.rgbaMx, ovIn: overlays, output: output }, clQueue);
 }
 
 module.exports = vidSwitch;

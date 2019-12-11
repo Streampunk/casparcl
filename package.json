@@ -1,6 +1,6 @@
 {
   "name": "casparcl",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Implementing the features of CasparCG with Node.JS and OpenCL.",
   "main": "dist/index.js",
   "repository": "https://github.com/Streampunk/casparcl.git",

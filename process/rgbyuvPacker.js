@@ -53,12 +53,12 @@ yuvLoader.prototype.init = async function() {
   });
 };
 
-yuvLoader.prototype.fromYUV = async function(params) {
+yuvLoader.prototype.fromYUV = async function(params, queueNum) {
   let kernelParams = this.impl.getKernelParams(params);
   kernelParams.colMatrix = this.colMatrix;
   kernelParams.gammaLut = this.gammaLut;
   kernelParams.gamutMatrix = this.gamutMatrix;
-  return await this.readProgram.run(kernelParams);
+  return this.readProgram.run(kernelParams, queueNum);
 };
 
 function yuvSaver(context, colSpec, impl) {
@@ -91,11 +91,11 @@ yuvSaver.prototype.init = async function() {
   });
 };
 
-yuvSaver.prototype.toYUV = async function(params) {
+yuvSaver.prototype.toYUV = async function(params, queueNum) {
   let kernelParams = this.impl.getKernelParams(params);
   kernelParams.colMatrix = this.colMatrix;
   kernelParams.gammaLut = this.gammaLut;
-  return await this.writeProgram.run(kernelParams);
+  return this.writeProgram.run(kernelParams, queueNum);
 };
 
 module.exports = {

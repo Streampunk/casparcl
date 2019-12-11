@@ -30,9 +30,9 @@ process.prototype.init = async function() {
   });
 };
 
-process.prototype.run = async function(params) {
-  let kernelParams = await this.impl.getKernelParams(params);
-  return await this.processProgram.run(kernelParams);
+process.prototype.run = async function(params, clQueue) {
+  let kernelParams = await this.impl.getKernelParams(params, clQueue);
+  return this.processProgram.run(kernelParams, clQueue);
 };
 
 module.exports = process;

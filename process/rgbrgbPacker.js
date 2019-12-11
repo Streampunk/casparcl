@@ -43,11 +43,11 @@ rgbLoader.prototype.init = async function() {
   });
 };
 
-rgbLoader.prototype.fromRGB = async function(params) {
+rgbLoader.prototype.fromRGB = async function(params, queueNum) {
   let kernelParams = this.impl.getKernelParams(params);
   kernelParams.gammaLut = this.gammaLut;
   kernelParams.gamutMatrix = this.gamutMatrix;
-  return await this.readProgram.run(kernelParams);
+  return this.readProgram.run(kernelParams, queueNum);
 };
 
 function rgbSaver(context, colSpec, impl) {
@@ -70,10 +70,10 @@ rgbSaver.prototype.init = async function() {
   });
 };
 
-rgbSaver.prototype.toRGB = async function(params) {
+rgbSaver.prototype.toRGB = async function(params, queueNum) {
   let kernelParams = this.impl.getKernelParams(params);
   kernelParams.gammaLut = this.gammaLut;
-  return await this.writeProgram.run(kernelParams);
+  return this.writeProgram.run(kernelParams, queueNum);
 };
 
 module.exports = {

@@ -31,32 +31,70 @@ let bgra8Loader;
 let vidSwitcher;
 let webSaver;
 let v210Saver;
+let bgSrcs = [];
+let ovSrcs = [];
 let rgbaBG;
 let rgbaOV;
 let rgbaDst;
-let v210Dst;
-let webDst;
+let v210Dst = [];
+let webDst = [];
 let lastWeb;
 
-async function processFrame(bg, overlay) {
-  let start = process.hrtime();
+async function loadFrame(context, count, bg, overlay, clQueue) {
+  const start = process.hrtime();
 
-  await yuv422p10Loader.processFrame(bg, rgbaBG);
-  await bgra8Loader.processFrame(overlay, rgbaOV);
+  await Promise.all([
+    yuv422p10Loader.loadFrame(bg, bgSrcs[count%2], clQueue),
+    bgra8Loader.loadFrame(overlay, ovSrcs[count%2], clQueue),
+  ]);
 
-  timings = await vidSwitcher.processFrame(
-    [{ input: rgbaBG, scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: true, flipV: false },
-     { input: rgbaBG, scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: false, flipV: true }],
-    { wipe: true, frac: 0.5 },
-    rgbaOV,
-    rgbaDst
-  )
+  const end = process.hrtime(start);
+  // console.log(`Load-${count}: ${(end[1] / 1000000.0).toFixed(2)}`);
 
-  await v210Saver.processFrame(rgbaDst, v210Dst);
-  await webSaver.processFrame(rgbaDst, webDst);
+  await context.waitFinish(clQueue);
+  return count;
+}
 
-  // let end = process.hrtime(start);
-  // console.log('OpenCL:', end);
+async function processFrame(context, count, clQueue) {
+  const start = process.hrtime();
+
+  await Promise.all([
+    yuv422p10Loader.processFrame(bgSrcs[count%2], rgbaBG, clQueue),
+    bgra8Loader.processFrame(ovSrcs[count%2], rgbaOV, clQueue),
+
+    vidSwitcher.processFrame(
+      [{ input: rgbaBG, scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: true, flipV: false },
+        { input: rgbaBG, scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: false, flipV: true }],
+      { wipe: true, frac: 0.5 },
+      rgbaOV,
+      rgbaDst,
+      clQueue
+    ),
+
+    v210Saver.processFrame(rgbaDst, v210Dst[count%2], clQueue),
+    webSaver.processFrame(rgbaDst, webDst[count%2], clQueue)
+  ])
+
+  const end = process.hrtime(start);
+  // console.log(`OpenCL-${count}: ${(end[1] / 1000000.0).toFixed(2)}`);
+
+  await context.waitFinish(clQueue);
+  return count;
+}
+
+async function saveFrame(context, count, clQueue) {
+  const start = process.hrtime();
+
+  await Promise.all([
+    v210Saver.saveFrame(v210Dst[count%2], clQueue),
+    webSaver.saveFrame(webDst[count%2], clQueue)
+  ]);
+
+  const end = process.hrtime(start);
+  // console.log(`Save-${count}: ${(end[1] / 1000000.0).toFixed(2)}`);
+
+  await context.waitFinish(clQueue);
+  return [v210Dst[count%2], webDst[count%2]];
 }
 
 async function init () {
@@ -64,7 +102,8 @@ async function init () {
   const deviceIndex = 0;
   const context = new addon.clContext({
     platformIndex: platformIndex,
-    deviceIndex: deviceIndex
+    deviceIndex: deviceIndex,
+    overlapping: true
   });
   const platformInfo = await context.getPlatformInfo();
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
@@ -97,10 +136,14 @@ async function init () {
   rgbaBG = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
   rgbaOV = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
 
-  rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+  for (let c = 0; c < 2; ++c) {
+    bgSrcs[c] = await yuv422p10Loader.createBuffers();
+    ovSrcs[c] = await bgra8Loader.createBuffers();
 
-  v210Dst = await context.createBuffer(v210Saver.getNumBytes(), 'writeonly', 'coarse');
-  webDst = await context.createBuffer(webSaver.getNumBytes(), 'writeonly', 'coarse');
+    v210Dst[c] = await context.createBuffer(v210Saver.getNumBytes(), 'writeonly', 'coarse');
+    webDst[c] = await context.createBuffer(webSaver.getNumBytes(), 'writeonly', 'coarse');
+  }
+  rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
 
   lastWeb = Buffer.alloc(webSaver.getNumBytes());
 
@@ -111,8 +154,8 @@ async function init () {
 	let server = kapp.listen(3001);
 	process.on('SIGHUP', server.close)
 
-	let result = []
-	let counter = 0
+	let result = [];
+	let counter = 0;
 
 	async function read() {
 		let packet
@@ -133,29 +176,34 @@ async function init () {
   	pixelFormat: macadam.bmdFormat10BitYUV
 	})
 
-	let start = process.hrtime();
-
-	while (true) {
-		let work = []
+  let start = process.hrtime();
+  while (true) {
+    let work = [];
     let stamp = process.hrtime();
-		work[0] = read()
-		if (result.length >= 1) {
-     	work[1] = Promise.all([decoder.decode(result[0]),
-				 request('http://localhost:3000/', { encoding: null })]);;
-		}
-		if (result.length >= 2) {
-			// console.log(result[2])
-			work[2] = processFrame(result[1][0].frames[0].data, result[1][1])
+		if (result.length >= 5) {
+      result[4][1].copy(lastWeb);
+      work[5] = playback.displayFrame(result[4][0]);
+    }
+		if (result.length >= 4) {
+      work[4] = saveFrame(context, result[3], context.queue.unload);
 		}
 		if (result.length >= 3) {
-      webDst.copy(lastWeb);
-			work[3] = playback.displayFrame(v210Dst)
+      work[3] = processFrame(context, result[2], context.queue.process);
 		}
-		result = await Promise.all(work)
-		let diff = process.hrtime(start)
-		let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) )
-		await waitForIt(wait)
-		console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`)
+		if (result.length >= 2) {
+      work[2] = loadFrame(context, counter-2, result[1][0].frames[0].data, result[1][1], context.queue.load);
+		}
+		if (result.length >= 1) {
+      work[1] = Promise.all([decoder.decode(result[0]),
+        request('http://localhost:3000/', { encoding: null })]);
+    }
+    work[0] = read()
+    result = await Promise.all(work)
+
+		let diff = process.hrtime(start);
+    let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) );
+    await waitForIt(wait);
+		console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`);
 	}
 };
 
