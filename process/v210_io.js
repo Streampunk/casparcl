@@ -102,13 +102,21 @@ const v210Kernel = `
     }
   }
 
-  __kernel void write(__global float4* restrict input,
+  __kernel void write(__global float4* restrict inputT,
+                      __global float4* restrict inputB,
                       __global uint4* restrict output,
                       __private unsigned int width,
+                      __private unsigned int interlace,
                       __constant float4* restrict colMatrix,
                       __global float* restrict gammaLut) {
     uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
+
+    bool topField = (0 == (get_group_id(0) & 1));
+    __global float4* input = (0 != interlace) &&
+                              !(topField && (1 == interlace)) &&
+                              !(!topField && (3 == interlace)) ?
+      inputB : inputT;
 
     // 48 pixels per workItem = 8 output uint4s per work item
     uint numPixels = lastItemOnLine && (0 != width % 48) ? width % 48 : 48;
@@ -302,9 +310,11 @@ writer.prototype.chromaRange = 896;
 writer.prototype.kernel = v210Kernel;
 writer.prototype.getKernelParams = function(params) {
   return {
-    input: params.source,
+    inputT: params.source[0],
+    inputB: params.source[1],
     output: params.dest,
-    width: this.width
+    width: this.width,
+    interlace: params.interlace || 0
   }
 }
 

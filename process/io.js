@@ -150,29 +150,33 @@ fromRGBA.prototype.init = async function(params) {
   if (!((srcWidth === this.width) && (srcHeight === this.height))) {
     this.resizer = new imageProcess(this.context, this.width, this.height, new resize({}));
     await this.resizer.init();
-    this.rgbaSz = await this.context.createBuffer(this.width * this.height * 4 * 4, 'readwrite', 'coarse', { width: this.width, height: this.height });
+    this.rgbaSz = [];
+    for (let f = 0; f < 2; ++f)
+      this.rgbaSz.push(await this.context.createBuffer(this.width * this.height * 4 * 4, 'readwrite', 'coarse', { width: this.width, height: this.height }));
   }
 }
 
-fromRGBA.prototype.processFrame = async function(input, output, clQueue) {
+fromRGBA.prototype.processFrame = async function(input, numFields, output, clQueue) {
   const outputs = Array.isArray(output) ? output : [ output ];
   let result;
 
   let source = input;
   if (this.resizer) {
-    await this.resizer.run({ input: input, output: this.rgbaSz }, clQueue);
+    for (let f=0; f<numFields; ++f)
+      await this.resizer.run({ input: input[f], output: this.rgbaSz[f] }, clQueue);
     source = this.rgbaSz;
   }
 
+  const interlace = (output.interlaced && numFields > 1) ? output.tff ? 0x1 : 0x3 : 0;
   switch (this.format) {
     case 'yuv422p10':
-      result = this.saver.toYUV({ source: source, dest: outputs }, clQueue);
+      result = this.saver.toYUV({ source: source, dest: outputs, interlace: interlace }, clQueue);
       break;
     case 'v210':
-      result = this.saver.toYUV({ source: source, dest: outputs[0] }, clQueue);
+      result = this.saver.toYUV({ source: source, dest: outputs[0], interlace: interlace }, clQueue);
       break;
     default:
-      result = this.saver.toRGB({ source: source, dest: outputs[0] }, clQueue);
+      result = this.saver.toRGB({ source: source, dest: outputs[0], interlace: interlace }, clQueue);
   }
   return result;
 }

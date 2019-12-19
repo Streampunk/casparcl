@@ -27,78 +27,85 @@ kapp.use(cors());
 const width = 1920;
 const height = 1080;
 
+let yuv422p10Loader;
 let bgra8Loader;
 let vidSwitcher;
 let webSaver;
 let v210Saver;
 let bgSrcs = [];
 let ovSrcs = [];
-let rgbaBG;
-let rgbaOV;
-let rgbaDst;
+let rgbaBG = [];
+let rgbaOV = [];
+let rgbaDst = [];
 let v210Dst = [];
 let webDst = [];
 let lastWeb;
 
-async function loadFrame(context, count, bg, overlay, clQueue) {
+async function loadFrame(context, bg, overlay, clQueue) {
   const start = process.hrtime();
-
-  await Promise.all([
-    yuv422p10Loader.loadFrame(bg, bgSrcs[count%2], clQueue),
-    bgra8Loader.loadFrame(overlay, ovSrcs[count%2], clQueue),
-  ]);
+  for (let field=0; field<bg.data.length; ++field) {
+    await Promise.all([
+      yuv422p10Loader.loadFrame(bg.data[field].data, bgSrcs[field][bg.count%2], clQueue),
+      bgra8Loader.loadFrame(overlay.data, ovSrcs[field][bg.count%2], clQueue)
+    ]);
+  }
 
   const end = process.hrtime(start);
-  // console.log(`Load-${count}: ${(end[1] / 1000000.0).toFixed(2)}`);
+  // console.log(`Load-${bg.count}: ${(end[1] / 1000000.0).toFixed(2)}`);
 
   await context.waitFinish(clQueue);
-  return count;
+  return { count: bg.count, numFields: bg.data.length };
 }
 
-async function processFrame(context, count, clQueue) {
+async function processFrame(context, params, clQueue) {
   const start = process.hrtime();
 
+  for (let field=0; field<params.numFields; ++field) {
+    await Promise.all([
+      yuv422p10Loader.processFrame(bgSrcs[field][params.count%2], rgbaBG[field], clQueue),
+      bgra8Loader.processFrame(ovSrcs[field][params.count%2], rgbaOV[field], clQueue),
+
+      vidSwitcher.processFrame(
+        [{ input: rgbaBG[field], scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: true, flipV: false },
+         { input: rgbaBG[field], scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: false, flipV: true }],
+        { wipe: true, frac: 0.5 },
+        rgbaOV[field],
+        rgbaDst[field],
+        clQueue
+      ),
+    ]);
+  }
+
   await Promise.all([
-    yuv422p10Loader.processFrame(bgSrcs[count%2], rgbaBG, clQueue),
-    bgra8Loader.processFrame(ovSrcs[count%2], rgbaOV, clQueue),
-
-    vidSwitcher.processFrame(
-      [{ input: rgbaBG, scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: true, flipV: false },
-        { input: rgbaBG, scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: false, flipV: true }],
-      { wipe: true, frac: 0.5 },
-      rgbaOV,
-      rgbaDst,
-      clQueue
-    ),
-
-    v210Saver.processFrame(rgbaDst, v210Dst[count%2], clQueue),
-    webSaver.processFrame(rgbaDst, webDst[count%2], clQueue)
+    v210Saver.processFrame(rgbaDst, params.numFields, v210Dst[params.count%2], clQueue),
+    webSaver.processFrame(rgbaDst, params.numFields, webDst[params.count%2], clQueue)
   ])
 
   const end = process.hrtime(start);
   // console.log(`OpenCL-${count}: ${(end[1] / 1000000.0).toFixed(2)}`);
 
   await context.waitFinish(clQueue);
-  return count;
+  return { count: params.count };
 }
 
-async function saveFrame(context, count, clQueue) {
+async function saveFrame(context, params, clQueue) {
   const start = process.hrtime();
 
   await Promise.all([
-    v210Saver.saveFrame(v210Dst[count%2], clQueue),
-    webSaver.saveFrame(webDst[count%2], clQueue)
+    v210Saver.saveFrame(v210Dst[params.count%2], clQueue),
+    webSaver.saveFrame(webDst[params.count%2], clQueue)
   ]);
 
   const end = process.hrtime(start);
   // console.log(`Save-${count}: ${(end[1] / 1000000.0).toFixed(2)}`);
 
   await context.waitFinish(clQueue);
-  return [v210Dst[count%2], webDst[count%2]];
+  return [v210Dst[params.count%2], webDst[params.count%2]];
 }
 
 async function init () {
-  const platformIndex = 0;
+  const enableDeinterlace = true;
+  const platformIndex = 1;
   const deviceIndex = 0;
   const context = new addon.clContext({
     platformIndex: platformIndex,
@@ -110,7 +117,22 @@ async function init () {
 
   let demuxer = await beamcoder.demuxer('../../media/dpp/AS11_DPP_HD_EXAMPLE_1.mxf');
   await demuxer.seek({ time: 40 });
-  let decoder = beamcoder.decoder({ name: 'h264' });
+  const stream = demuxer.streams[0];
+  let decoder = beamcoder.decoder({ name: stream.codecpar.name });
+  let filterer = await beamcoder.filterer({
+    filterType: 'video',
+    inputParams: [{
+      width: stream.codecpar.width,
+      height: stream.codecpar.height,
+      pixelFormat: stream.codecpar.format,
+      timeBase: stream.time_base,
+      pixelAspect: stream.codecpar.sample_aspect_ratio
+    }],
+    outputParams: [{
+      pixelFormat: stream.codecpar.format
+    }],
+    filterSpec: 'yadif=mode=1:parity=-1:deint=0'
+  })
 
 	const bgColSpecRead = '709';
   const ovColSpecRead = 'sRGB';
@@ -133,17 +155,27 @@ async function init () {
   await webSaver.init({ colSpec: webColSpecWrite, srcWidth: width, srcHeight: height });
 
   const numBytesRGBA = width * height * 4 * 4;
-  rgbaBG = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
-  rgbaOV = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+  for (let f = 0; f < 2; ++f) {
+    bgSrcs[f] = [];
+    ovSrcs[f] = [];
+    for (let c = 0; c < 2; ++c) {
+      bgSrcs[f][c] = await yuv422p10Loader.createBuffers();
+      ovSrcs[f][c] = await bgra8Loader.createBuffers();
+    }
 
-  for (let c = 0; c < 2; ++c) {
-    bgSrcs[c] = await yuv422p10Loader.createBuffers();
-    ovSrcs[c] = await bgra8Loader.createBuffers();
-
-    v210Dst[c] = await context.createBuffer(v210Saver.getNumBytes(), 'writeonly', 'coarse');
-    webDst[c] = await context.createBuffer(webSaver.getNumBytes(), 'writeonly', 'coarse');
+    rgbaBG[f] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+    rgbaOV[f] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+    rgbaDst[f] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
   }
-  rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
+  
+  for (let c = 0; c < 2; ++c) {
+    v210Dst[c] = await context.createBuffer(v210Saver.getNumBytes(), 'writeonly', 'coarse');
+    v210Dst[c].interlaced = true;
+    v210Dst[c].tff = true;
+
+    webDst[c] = await context.createBuffer(webSaver.getNumBytes(), 'writeonly', 'coarse');
+    webDst[c].interlaced = false;
+  }
 
   lastWeb = Buffer.alloc(webSaver.getNumBytes());
 
@@ -157,11 +189,30 @@ async function init () {
 	let result = [];
 	let counter = 0;
 
-	async function read() {
+	async function read(params) {
 		let packet
 		do (packet = await demuxer.read())
 		while (packet.stream_index !== 0);
-		return packet
+		return { count: params.count, data: packet };
+	}
+
+	async function decode(params) {
+    let frame = await decoder.decode(params.data);
+		return { count: params.count, data: frame.frames };
+	}
+
+	async function deinterlace(params) {
+    const doDeinterlace = enableDeinterlace && params.data[0].interlaced_frame;
+    let filtFrames = params.data;
+    if (doDeinterlace)
+      filtFrames = await filterer.filter(params.data);
+    const result = doDeinterlace ? filtFrames[0].frames : params.data;
+    return { count: params.count, data: result };
+	}
+
+	async function reqOverlay(params) {
+		let ov = await request('http://localhost:3000/', { encoding: null });
+		return { count: params.count, data: ov };
 	}
 
 	async function waitForIt (t) {
@@ -170,34 +221,37 @@ async function init () {
 		})
 	}
 
-	let playback = await macadam.playback({
-  	deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
-  	displayMode: macadam.bmdModeHD1080i50,
-  	pixelFormat: macadam.bmdFormat10BitYUV
-	})
+	// let playback = await macadam.playback({
+  // 	deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
+  // 	displayMode: macadam.bmdModeHD1080i50,
+  // 	pixelFormat: macadam.bmdFormat10BitYUV
+	// })
 
   let start = process.hrtime();
   while (true) {
     let work = [];
     let stamp = process.hrtime();
-		if (result.length >= 5) {
-      result[4][1].copy(lastWeb);
-      work[5] = playback.displayFrame(result[4][0]);
+    if (result.length >= 6) {
+      result[5][1].copy(lastWeb);
+      // work[6] = playback.displayFrame(result[5][0]);
     }
+		if (result.length >= 5) {
+      work[5] = saveFrame(context, result[4], context.queue.unload);
+		}
 		if (result.length >= 4) {
-      work[4] = saveFrame(context, result[3], context.queue.unload);
+      work[4] = processFrame(context, result[3], context.queue.process);
 		}
 		if (result.length >= 3) {
-      work[3] = processFrame(context, result[2], context.queue.process);
+      if (result[2][0].data.length)
+        work[3] = loadFrame(context, result[2][0], result[2][1], context.queue.load);
 		}
 		if (result.length >= 2) {
-      work[2] = loadFrame(context, counter-2, result[1][0].frames[0].data, result[1][1], context.queue.load);
-		}
-		if (result.length >= 1) {
-      work[1] = Promise.all([decoder.decode(result[0]),
-        request('http://localhost:3000/', { encoding: null })]);
+      work[2] = Promise.all([deinterlace(result[1]), reqOverlay(result[1])]);
     }
-    work[0] = read()
+		if (result.length >= 1) {
+      work[1] = decode(result[0])
+    }
+    work[0] = read({ count: counter })
     result = await Promise.all(work)
 
 		let diff = process.hrtime(start);

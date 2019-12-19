@@ -115,15 +115,23 @@ const yuv422p10leKernel = `
     }
   }
 
-  __kernel void write(__global float4* restrict input,
+  __kernel void write(__global float4* restrict inputT,
+                      __global float4* restrict inputB,
                       __global ushort8* restrict outputY,
                       __global ushort4* restrict outputU,
                       __global ushort4* restrict outputV,
                       __private unsigned int width,
+                      __private unsigned int interlace,
                       __constant float4* restrict colMatrix,
                       __global float* restrict gammaLut) {
     uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
+
+    bool topField = (0 == (get_group_id(0) & 1));
+    __global float4* input = (0 != interlace) &&
+                              !(topField && (1 == interlace)) &&
+                              !(!topField && (3 == interlace)) ?
+      inputB : inputT;
 
     // 64 input pixels per workItem = 8 input luma ushort8s per work item, 8 each u & v ushort4s per work item
     uint numPixels = lastItemOnLine && (0 != width % 8) ? width % 64 : 64;
@@ -329,7 +337,8 @@ writer.prototype.getKernelParams = function(params) {
     outputY: params.dests[0],
     outputU: params.dests[1],
     outputV: params.dests[2],
-    width: this.width
+    width: this.width,
+    interlace: params.interlace || 0
   }
 }
 
