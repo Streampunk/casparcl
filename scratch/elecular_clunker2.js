@@ -104,7 +104,7 @@ async function saveFrame(context, params, clQueue) {
 }
 
 async function init () {
-  const enableDeinterlace = true;
+  const enableDeinterlace = false;
   const platformIndex = 1;
   const deviceIndex = 0;
   const context = new addon.clContext({
@@ -167,7 +167,7 @@ async function init () {
     rgbaOV[f] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
     rgbaDst[f] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: width, height: height });
   }
-  
+
   for (let c = 0; c < 2; ++c) {
     v210Dst[c] = await context.createBuffer(v210Saver.getNumBytes(), 'writeonly', 'coarse');
     v210Dst[c].interlaced = true;
@@ -221,11 +221,11 @@ async function init () {
 		})
 	}
 
-	// let playback = await macadam.playback({
-  // 	deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
-  // 	displayMode: macadam.bmdModeHD1080i50,
-  // 	pixelFormat: macadam.bmdFormat10BitYUV
-	// })
+	let playback = await macadam.playback({
+  	deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
+  	displayMode: macadam.bmdModeHD1080i50,
+  	pixelFormat: macadam.bmdFormat10BitYUV
+	})
 
   let start = process.hrtime();
   while (true) {
@@ -233,7 +233,7 @@ async function init () {
     let stamp = process.hrtime();
     if (result.length >= 6) {
       result[5][1].copy(lastWeb);
-      // work[6] = playback.displayFrame(result[5][0]);
+      work[6] = playback.displayFrame(result[5][0]);
     }
 		if (result.length >= 5) {
       work[5] = saveFrame(context, result[4], context.queue.unload);

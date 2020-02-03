@@ -9,16 +9,17 @@
   "private": false,
   "dependencies": {
     "@koa/cors": "2",
-    "beamcoder": "^0.3.4",
+    "beamcoder": "^0.5.0",
     "highland": "^2.13.5",
     "macadam": "^2.0.9",
-    "nodencl": "^1.2.1",
-    "osc": "^2.3.1",
+    "nodencl": "^1.2.3",
+    "osc": "^2.4.0",
     "request": "^2.88.0",
-    "request-promise-native": "^1.0.8"
+    "request-promise-native": "^1.0.8",
+    "koa": "^2.8.2"
   },
   "devDependencies": {
-    "@types/highland": "^2.12.3",
-    "typescript": "^3.5.3"
+    "@types/highland": "^2.12.9",
+    "typescript": "^3.7.5"
   }
 }
