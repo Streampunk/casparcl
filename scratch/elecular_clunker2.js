@@ -20,12 +20,24 @@ const beamcoder = require('beamcoder');
 const io = require('../process/io.js');
 const vidSwitch = require('../process/switcher.js');
 const macadam = require('macadam')
+const oscServer = require('./oscServer.js');
 
 const kapp = new Koa();
 kapp.use(cors());
 
 const width = 1920;
 const height = 1080;
+
+const oscPort = 9876;
+const oscRemoteAddr = '192.168.1.202';
+
+let scale0 = 0.75;
+let scale1 = 0.75;
+let offset0 = 0.0;
+let offset1 = 0.0;
+let flipV0 = false;
+let flipV1 = true;
+let wipeFrac = 0.5;
 
 let yuv422p10Loader;
 let bgra8Loader;
@@ -66,9 +78,9 @@ async function processFrame(context, params, clQueue) {
       bgra8Loader.processFrame(ovSrcs[field][params.count%2], rgbaOV[field], clQueue),
 
       vidSwitcher.processFrame(
-        [{ input: rgbaBG[field], scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: true, flipV: false },
-         { input: rgbaBG[field], scale: 0.75, offsetX: 0.0, offsetY: 0.0, flipH: false, flipV: true }],
-        { wipe: true, frac: 0.5 },
+        [{ input: rgbaBG[field], scale: scale0, offsetX: offset0, offsetY: 0.0, flipH: false, flipV: flipV0 },
+         { input: rgbaBG[field], scale: scale1, offsetX: offset1, offsetY: 0.0, flipH: false, flipV: flipV1 }],
+        { wipe: true, frac: wipeFrac },
         rgbaOV[field],
         rgbaDst[field],
         clQueue
@@ -104,8 +116,8 @@ async function saveFrame(context, params, clQueue) {
 }
 
 async function init () {
-  const enableDeinterlace = false;
-  const platformIndex = 1;
+  const enableDeinterlace = true;
+  const platformIndex = 0;
   const deviceIndex = 0;
   const context = new addon.clContext({
     platformIndex: platformIndex,
@@ -185,6 +197,15 @@ async function init () {
 
 	let server = kapp.listen(3001);
 	process.on('SIGHUP', server.close)
+
+  const oscServ = new oscServer({ port: oscPort, remoteAddr: oscRemoteAddr });
+  oscServ.addControl('/1/fader1', v => scale0 = v[0], () => [{ type: 'f', value: scale0 }]);
+  oscServ.addControl('/1/fader2', v => scale1 = v[0], () => [{ type: 'f', value: scale1 }]);
+  oscServ.addControl('/1/fader3', v => offset0 = (v[0] - 0.5) * 2.0, () => [{ type: 'f', value: offset0 / 2.0 + 0.5 }]);
+  oscServ.addControl('/1/fader4', v => offset1 = (v[0] - 0.5) * 2.0, () => [{ type: 'f', value: offset1 / 2.0 + 0.5 }]);
+	oscServ.addControl('/1/toggle1', v => flipV0 = v[0] !== 0, () => [{ type: 'i', value: flipV0 ? 1 : 0 }]);
+	oscServ.addControl('/1/toggle2', v => flipV1 = v[0] !== 0, () => [{ type: 'i', value: flipV1 ? 1 : 0 }]);
+	oscServ.addControl('/1/fader5', v => wipeFrac = v[0], () => [{ type: 'f', value: wipeFrac }]);
 
 	let result = [];
 	let counter = 0;
