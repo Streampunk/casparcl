@@ -9,14 +9,14 @@
   "private": false,
   "dependencies": {
     "@koa/cors": "2",
-    "beamcoder": "^0.5.0",
+    "beamcoder": "^0.5.1",
     "highland": "^2.13.5",
+    "koa": "^2.11.0",
     "macadam": "^2.0.9",
     "nodencl": "^1.2.3",
     "osc": "^2.4.0",
     "request": "^2.88.0",
-    "request-promise-native": "^1.0.8",
-    "koa": "^2.8.2"
+    "request-promise-native": "^1.0.8"
   },
   "devDependencies": {
     "@types/highland": "^2.12.9",
