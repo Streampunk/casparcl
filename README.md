@@ -18,7 +18,7 @@ Experiments don't necessarily pan out. Resource is limited. Don't expect miracle
 
 ## Updates
 
-### 3rd November 2020
+### 3rd November 2019
 
 Progress has been made since we set out on this project. See the video of a vision mixer built on this stack from the [EBU Open Source event 2019](https://tech.ebu.ch/home/publications/main/section-publication-main/section-publication-main/publicationList/2019/09/24/streampunk-beamcoder.html).
 
@@ -41,6 +41,26 @@ Next steps:
 * Mixer operations similar to those from CasparCG - including arbitrary scaling
 * Bolting AMCP on the front of the stack.
 * HTTP/S optimisations based around [arachnid](https://github.com/Streampunk/arachnid).
+
+### 3rd February 2020
+
+In the last 3 months:
+
+* NodenCL has been improved using pipelining. By defining a local processing graph, each of copy to the GPU, copy from the GPU and processing can be overlapped to run in parallel. Working well on AMD and nVidia GPUs.
+* Typescript definitions now available for NodenCL and Beamcoder
+* Realtime quarter-size previews in a browser web canvas. Uncompressed with correct sRGB colors.
+* Prototype mixing and compositing functions, including arbitrary scaling, flipping, positioning. 10-bit video colour on input is preserved through the composite to the output.
+* Checking everything is working on Node 12.
+* Redioactive is working. Some further development required to add all higher-order features including splitting and joining streams.
+
+Still to come:
+
+* Bolting AMCP-_lite_ on the front of the stack.
+* Productising CasparCL - a MVP towards a realease.
+
+![CasparCL stack](/caspar_stack.png)
+
+
 
 
 
