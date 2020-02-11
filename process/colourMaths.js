@@ -343,5 +343,6 @@ module.exports = {
 
   rgb2rgbMatrix: rgb2rgbMatrix,
 
+  matrixMultiply: matrixMultiply,
   matrixFlatten: matrixFlatten
 };

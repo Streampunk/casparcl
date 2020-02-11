@@ -37,6 +37,7 @@ let offset0 = 0.0;
 let offset1 = 0.0;
 let flipV0 = false;
 let flipV1 = true;
+let rotate = 0.0;
 let wipeFrac = 0.5;
 
 let yuv422p10Loader;
@@ -78,8 +79,8 @@ async function processFrame(context, params, clQueue) {
       bgra8Loader.processFrame(ovSrcs[field][params.count%2], rgbaOV[field], clQueue),
 
       vidSwitcher.processFrame(
-        [{ input: rgbaBG[field], scale: scale0, offsetX: offset0, offsetY: 0.0, flipH: false, flipV: flipV0 },
-         { input: rgbaBG[field], scale: scale1, offsetX: offset1, offsetY: 0.0, flipH: false, flipV: flipV1 }],
+        [{ input: rgbaBG[field], scale: scale0, offsetX: offset0, offsetY: 0.0, flipH: false, flipV: flipV0, rotate: rotate },
+         { input: rgbaBG[field], scale: scale1, offsetX: offset1, offsetY: 0.0, flipH: false, flipV: flipV1, rotate: rotate }],
         { wipe: true, frac: wipeFrac },
         rgbaOV[field],
         rgbaDst[field],
@@ -202,7 +203,7 @@ async function init () {
   oscServ.addControl('/1/fader1', v => scale0 = v[0], () => [{ type: 'f', value: scale0 }]);
   oscServ.addControl('/1/fader2', v => scale1 = v[0], () => [{ type: 'f', value: scale1 }]);
   oscServ.addControl('/1/fader3', v => offset0 = (v[0] - 0.5) * 2.0, () => [{ type: 'f', value: offset0 / 2.0 + 0.5 }]);
-  oscServ.addControl('/1/fader4', v => offset1 = (v[0] - 0.5) * 2.0, () => [{ type: 'f', value: offset1 / 2.0 + 0.5 }]);
+  oscServ.addControl('/1/fader4', v => rotate = (v[0] - 0.5) * 2 * Math.PI, () => [{ type: 'f', value: rotate / 2.0 / Math.PI + 0.5 }]);
 	oscServ.addControl('/1/toggle1', v => flipV0 = v[0] !== 0, () => [{ type: 'i', value: flipV0 ? 1 : 0 }]);
 	oscServ.addControl('/1/toggle2', v => flipV1 = v[0] !== 0, () => [{ type: 'i', value: flipV1 ? 1 : 0 }]);
 	oscServ.addControl('/1/fader5', v => wipeFrac = v[0], () => [{ type: 'f', value: wipeFrac }]);

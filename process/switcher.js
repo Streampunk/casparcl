@@ -14,7 +14,7 @@
 */
 
 const imageProcess = require('./imageProcess.js');
-const resize = require('./resize.js');
+const transform = require('./transform.js');
 const mix = require('./mix.js');
 const wipe = require('./wipe.js');
 const combine = require('./combine.js');
@@ -32,14 +32,14 @@ function vidSwitch(context, width, height, numInputs, numOverlays) {
 vidSwitch.prototype.init = async function() {
   const numBytesRGBA = this.width * this.height * 4 * 4;
 
-  this.sizer0 = new imageProcess(this.context, this.width, this.height, new resize({}));
-  await this.sizer0.init();
-  this.rgbaSz0 = await this.context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: this.width, height: this.height });
+  this.xform0 = new imageProcess(this.context, this.width, this.height, new transform({ width: this.width, height: this.height }));
+  await this.xform0.init();
+  this.rgbaXf0 = await this.context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: this.width, height: this.height });
 
   if (this.numInputs > 1) {
-    this.sizer1 = new imageProcess(this.context, this.width, this.height, new resize({}));
-    await this.sizer1.init();
-    this.rgbaSz1 = await this.context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: this.width, height: this.height });
+    this.xform1 = new imageProcess(this.context, this.width, this.height, new transform({ width: this.width, height: this.height }));
+    await this.xform1.init();
+    this.rgbaXf1 = await this.context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', { width: this.width, height: this.height });
     this.mixer = new imageProcess(this.context, this.width, this.height, new mix({}));
     await this.mixer.init();
     this.wiper = new imageProcess(this.context, this.width, this.height, new wipe({}));
@@ -51,17 +51,17 @@ vidSwitch.prototype.init = async function() {
 }
 
 vidSwitch.prototype.processFrame = async function(inParams, mixParams, overlays, output, clQueue) {
-  inParams[0].output = this.rgbaSz0;
-  await this.sizer0.run(inParams[0], clQueue);
+  inParams[0].output = this.rgbaXf0;
+  await this.xform0.run(inParams[0], clQueue);
 
   if (this.numInputs > 1) {
-    inParams[1].output = this.rgbaSz1;
-    await this.sizer1.run(inParams[1], clQueue);
+    inParams[1].output = this.rgbaXf1;
+    await this.xform1.run(inParams[1], clQueue);
 
     if (mixParams.wipe) {
-      await this.wiper.run({ input0: this.rgbaSz0, input1: this.rgbaSz1, wipe: mixParams.frac, output: this.rgbaMx }, clQueue);
+      await this.wiper.run({ input0: this.rgbaXf0, input1: this.rgbaXf1, wipe: mixParams.frac, output: this.rgbaMx }, clQueue);
     } else {
-      await this.mixer.run({ input0: this.rgbaSz0, input1: this.rgbaSz1, mix: mixParams.frac, output: this.rgbaMx }, clQueue);
+      await this.mixer.run({ input0: this.rgbaXf0, input1: this.rgbaXf1, mix: mixParams.frac, output: this.rgbaMx }, clQueue);
     }
   }
 
