@@ -35,23 +35,25 @@ const mixKernel = `
 
     write_imagef(output, (int2)(x, y), out);
   };
-`;
+`
 
-function mix(params) {
-  this.name = 'mixer';
-  return this;
+function mix(/*params*/) {
+	this.name = 'mixer'
+	return this
 }
 
-mix.prototype.init = async function(context) {}
-mix.prototype.kernel = mixKernel;
-mix.prototype.getKernelName = function() { return this.name; }
-mix.prototype.getKernelParams = async function(params) {
-  return {
-    input0: params.input0,
-    input1: params.input1,
-    mix: params.mix,
-    output: params.output,
-  }
+mix.prototype.init = async function (/*context*/) {}
+mix.prototype.kernel = mixKernel
+mix.prototype.getKernelName = function () {
+	return this.name
+}
+mix.prototype.getKernelParams = async function (params) {
+	return {
+		input0: params.input0,
+		input1: params.input1,
+		mix: params.mix,
+		output: params.output
+	}
 }
 
-module.exports = mix;
+module.exports = mix

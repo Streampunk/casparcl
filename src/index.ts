@@ -1,83 +1,61 @@
-	import H from 'highland'
+/* Copyright 2020 Streampunk Media Ltd.
 
-let [counter1, counter2] = [0, 0]
+	Licensed under the Apache License, Version 2.0 (the "License");
+	you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
 
-enum MediaType {
-	VIDEO = 'VIDEO',
-	AUDIO = 'AUDIO',
-	DATA = 'DATA'
-}
+    http://www.apache.org/licenses/LICENSE-2.0
 
-interface Packet {
-	name: string
-	mediaType: MediaType
-	pts: number
-}
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
 
-let mediaPromise = (n: number, name: string): Promise<Packet> => new Promise((resolve, reject) => {
-	setTimeout(() => {
-		switch (n % 4) {
-			case 0:
-				resolve({
-					name,
-					mediaType: MediaType.VIDEO,
-					pts: (n / 4 | 0) * 90000
-				})
-				break
-			case 1:
-			case 2:
-				resolve({
-					name,
-					mediaType: MediaType.AUDIO,
-					pts: (n / 4 | 0) * 90000
-				})
-				break
-			case 3:
-				resolve({
-					name,
-					mediaType: MediaType.DATA,
-					pts: (n / 4 | 0) * 90000
-				})
-				break
-			default:
-				reject(new Error('Oh Blimey!'))
-				break
-		}
-	}, n % 4 === 0 ? 5 : 1)
+import { start, processCommand } from './AMCP/server'
+import { Commands } from './AMCP/commands'
+import { Basic } from './AMCP/basic'
+import Koa from 'koa'
+import cors from '@koa/cors'
+import readline from 'readline'
+
+const rl = readline.createInterface({
+	input: process.stdin,
+	output: process.stdout,
+	prompt: 'AMCP> '
 })
 
-let mixerPromise = (s1: Packet, s2: Packet) => new Promise((resolve, reject) => {
-	setTimeout(() => {
-		resolve({
-			name: `mix(${s1.name}, ${s2.name})`,
-			mediaType: s1.mediaType,
-			pts: s1.pts
-		})
-	}, 12)
+rl.on('line', (input) => {
+	if (input === 'q') {
+		process.kill(process.pid, 'SIGTERM')
+	}
+
+	if (input !== '') {
+		console.log(`AMCP received: ${input}`)
+		processCommand(input.toUpperCase().match(/"[^"]+"|""|\S+/g))
+	}
+
+	rl.prompt()
 })
 
-let source1 : Highland.Stream<Packet> = H((push, next) =>
-	mediaPromise(counter1++, 'Source1').then(p => { push(null, p); next(); }))
-
-let source2 : Highland.Stream<Packet> = H(async (push, next) => {
-	let packet = await mediaPromise(counter2++, 'Source2')
-	push(null, packet)
-	next()
+rl.on('SIGINT', () => {
+	process.kill(process.pid, 'SIGTERM')
 })
 
-let video1: Highland.Stream<Packet> = source1.fork().filter((x: any) => x.mediaType === MediaType.VIDEO)
-let audio1: Highland.Stream<Packet> = source1.fork().filter((x: any) => x.mediaType === MediaType.AUDIO)
+// 960 * 540 RGBA 8-bit
+const lastWeb = Buffer.alloc(1920 * 1080)
 
-let video2: Highland.Stream<Packet> = source2.fork().filter((x: any) => x.mediaType === MediaType.VIDEO)
-let audio2: Highland.Stream<Packet> = source2.fork().filter((x: any) => x.mediaType === MediaType.AUDIO)
+const kapp = new Koa()
+kapp.use(cors())
+kapp.use((ctx) => {
+	ctx.body = lastWeb
+})
+const server = kapp.listen(3001)
+process.on('SIGHUP', () => server.close)
 
-// @ts-ignore: typescirpt deinition is wrong for zip
-let vmix = video1.zip(video2).flatMap((x: [Packet, Packet]) => H(mixerPromise(x[0], x[1])))
+const commands: Commands = new Commands()
+const basic = new Basic()
+basic.addCmds(commands)
 
-// @ts-ignore: typescirpt deinition is wrong for zip
-let amix = audio1.zip(audio2).flatMap((x: [Packet, Packet]) => H(mixerPromise(x[0], x[1])))
-
-
-// @ts-ignore Typescript getting its knickers twisted over this: parameter for stream of streams
-H([vmix, amix]).merge().ratelimit(3, 200).each(H.log)
-//audio.each(H.log)
+start(commands).then(console.log, console.error)

@@ -27,7 +27,7 @@ const wipeKernel = `
 
     int w = get_image_width(output);
     int h = get_image_height(output);
-  
+
     int x = get_global_id(0);
     int y = get_global_id(1);
     float4 in0 = read_imagef(input0, sampler1, (int2)(x,y));
@@ -37,23 +37,25 @@ const wipeKernel = `
 
     write_imagef(output, (int2)(x, y), out);
   };
-`;
+`
 
-function wipe(params) {
-  this.name = 'wipe';
-  return this;
+function wipe(/*params*/) {
+	this.name = 'wipe'
+	return this
 }
 
-wipe.prototype.init = async function(context) {}
-wipe.prototype.kernel = wipeKernel;
-wipe.prototype.getKernelName = function() { return this.name; }
-wipe.prototype.getKernelParams = async function(params) {
-  return {
-    input0: params.input0,
-    input1: params.input1,
-    wipe: params.wipe,
-    output: params.output,
-  }
+wipe.prototype.init = async function (/*context*/) {}
+wipe.prototype.kernel = wipeKernel
+wipe.prototype.getKernelName = function () {
+	return this.name
+}
+wipe.prototype.getKernelParams = async function (params) {
+	return {
+		input0: params.input0,
+		input1: params.input1,
+		wipe: params.wipe,
+		output: params.output
+	}
 }
 
-module.exports = wipe;
+module.exports = wipe

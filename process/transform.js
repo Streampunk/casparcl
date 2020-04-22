@@ -13,7 +13,7 @@
   limitations under the License.
 */
 
-const colMaths = require('./colourMaths.js');
+const colMaths = require('./colourMaths.js')
 
 const transformKernel = `
   __constant sampler_t samplerIn =
@@ -50,75 +50,80 @@ const transformKernel = `
     float4 in = read_imagef(input, samplerIn, posIn);
     write_imagef(output, posOut, in);
   }
-`;
+`
 
 function transform(params) {
-  this.name = 'transform';
-  this.width = params.width;
-  this.height = params.height;
-  this.transformMatrix = [...new Array(3)].map(() => new Float32Array(3));
-  this.transformMatrix[0] = Float32Array.from([1.0, 0.0, 0.0]);
-  this.transformMatrix[1] = Float32Array.from([0.0, 1.0, 0.0]);
-  this.transformMatrix[2] = Float32Array.from([0.0, 0.0, 1.0]);
-  this.transformArray = colMaths.matrixFlatten(this.transformMatrix);
-  return this;
+	this.name = 'transform'
+	this.width = params.width
+	this.height = params.height
+	this.transformMatrix = [...new Array(3)].map(() => new Float32Array(3))
+	this.transformMatrix[0] = Float32Array.from([1.0, 0.0, 0.0])
+	this.transformMatrix[1] = Float32Array.from([0.0, 1.0, 0.0])
+	this.transformMatrix[2] = Float32Array.from([0.0, 0.0, 1.0])
+	this.transformArray = colMaths.matrixFlatten(this.transformMatrix)
+	return this
 }
 
-transform.prototype.updateMatrix = async function(clQueue) {
-  this.transformArray = colMaths.matrixFlatten(this.transformMatrix);
-  await this.matrixBuffer.hostAccess('writeonly', clQueue, Buffer.from(this.transformArray.buffer));
-  return this.matrixBuffer.hostAccess('none', clQueue);
+transform.prototype.updateMatrix = async function (clQueue) {
+	this.transformArray = colMaths.matrixFlatten(this.transformMatrix)
+	await this.matrixBuffer.hostAccess('writeonly', clQueue, Buffer.from(this.transformArray.buffer))
+	return this.matrixBuffer.hostAccess('none', clQueue)
 }
 
-transform.prototype.init = async function(context) {
-  this.matrixBuffer = await context.createBuffer(this.transformArray.byteLength, 'readonly', 'coarse');
-  return this.updateMatrix(context.queue.load);
+transform.prototype.init = async function (context) {
+	this.matrixBuffer = await context.createBuffer(
+		this.transformArray.byteLength,
+		'readonly',
+		'coarse'
+	)
+	return this.updateMatrix(context.queue.load)
 }
 
-transform.prototype.kernel = transformKernel;
-transform.prototype.getKernelName = function() { return this.name; }
-transform.prototype.getKernelParams = async function(params, clQueue) {
-  const aspect = this.width / this.height;
-  const flipX = (params.flipH || false) ? -1.0 : 1.0;
-  const flipY = (params.flipV || false) ? -1.0 : 1.0;
-  const scaleX = (params.scale || 1.0) * flipX * aspect;
-  const scaleY = (params.scale || 1.0) * flipY;
-  const offsetX = params.offsetX || 0.0;
-  const offsetY = params.offsetY || 0.0;
-  const rotate = params.rotate || 0.0;
+transform.prototype.kernel = transformKernel
+transform.prototype.getKernelName = function () {
+	return this.name
+}
+transform.prototype.getKernelParams = async function (params, clQueue) {
+	const aspect = this.width / this.height
+	const flipX = params.flipH || false ? -1.0 : 1.0
+	const flipY = params.flipV || false ? -1.0 : 1.0
+	const scaleX = (params.scale || 1.0) * flipX * aspect
+	const scaleY = (params.scale || 1.0) * flipY
+	const offsetX = params.offsetX || 0.0
+	const offsetY = params.offsetY || 0.0
+	const rotate = params.rotate || 0.0
 
-  let scaleMatrix = [...new Array(3)].map(() => new Float32Array(3));
-  scaleMatrix[0] = Float32Array.from([1.0 / scaleX, 0.0, 0.0]);
-  scaleMatrix[1] = Float32Array.from([0.0, 1.0 / scaleY, 0.0]);
-  scaleMatrix[2] = Float32Array.from([0.0, 0.0, 1.0]);
+	let scaleMatrix = [...new Array(3)].map(() => new Float32Array(3))
+	scaleMatrix[0] = Float32Array.from([1.0 / scaleX, 0.0, 0.0])
+	scaleMatrix[1] = Float32Array.from([0.0, 1.0 / scaleY, 0.0])
+	scaleMatrix[2] = Float32Array.from([0.0, 0.0, 1.0])
 
-  let translateMatrix = [...new Array(3)].map(() => new Float32Array(3));
-  translateMatrix[0] = Float32Array.from([1.0, 0.0, offsetX]);
-  translateMatrix[1] = Float32Array.from([0.0, 1.0, offsetY]);
-  translateMatrix[2] = Float32Array.from([0.0, 0.0, 1.0]);
+	let translateMatrix = [...new Array(3)].map(() => new Float32Array(3))
+	translateMatrix[0] = Float32Array.from([1.0, 0.0, offsetX])
+	translateMatrix[1] = Float32Array.from([0.0, 1.0, offsetY])
+	translateMatrix[2] = Float32Array.from([0.0, 0.0, 1.0])
 
-  let rotateMatrix = [...new Array(3)].map(() => new Float32Array(3));
-  rotateMatrix[0] = Float32Array.from([Math.cos(rotate), -Math.sin(rotate), 0.0]);
-  rotateMatrix[1] = Float32Array.from([Math.sin(rotate), Math.cos(rotate), 0.0]);
-  rotateMatrix[2] = Float32Array.from([0.0, 0.0, 1.0]);
+	let rotateMatrix = [...new Array(3)].map(() => new Float32Array(3))
+	rotateMatrix[0] = Float32Array.from([Math.cos(rotate), -Math.sin(rotate), 0.0])
+	rotateMatrix[1] = Float32Array.from([Math.sin(rotate), Math.cos(rotate), 0.0])
+	rotateMatrix[2] = Float32Array.from([0.0, 0.0, 1.0])
 
-  let projectMatrix = [...new Array(3)].map(() => new Float32Array(3));
-  projectMatrix[0] = Float32Array.from([aspect, 0.0, 0.0]);
-  projectMatrix[1] = Float32Array.from([0.0, 1.0, 0.0]);
-  projectMatrix[2] = Float32Array.from([0.0, 0.0, 1.0]);
+	let projectMatrix = [...new Array(3)].map(() => new Float32Array(3))
+	projectMatrix[0] = Float32Array.from([aspect, 0.0, 0.0])
+	projectMatrix[1] = Float32Array.from([0.0, 1.0, 0.0])
+	projectMatrix[2] = Float32Array.from([0.0, 0.0, 1.0])
 
-  this.transformMatrix =
-    colMaths.matrixMultiply(
-      colMaths.matrixMultiply(
-        colMaths.matrixMultiply(
-          scaleMatrix, translateMatrix), rotateMatrix), projectMatrix);
+	this.transformMatrix = colMaths.matrixMultiply(
+		colMaths.matrixMultiply(colMaths.matrixMultiply(scaleMatrix, translateMatrix), rotateMatrix),
+		projectMatrix
+	)
 
-  await this.updateMatrix(clQueue);
-  return {
-    input: params.input,
-    transformMatrix: this.matrixBuffer,
-    output: params.output,
-  }
+	await this.updateMatrix(clQueue)
+	return {
+		input: params.input,
+		transformMatrix: this.matrixBuffer,
+		output: params.output
+	}
 }
 
-module.exports = transform;
+module.exports = transform

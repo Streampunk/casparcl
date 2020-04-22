@@ -55,39 +55,45 @@ const combineKernel = `
     float4 out1 = fma(out0, k4, ov1);
     write_imagef(output, (int2)(x, y), out1);
   };
-`;
+`
 
 function combine(params) {
-  this.numOverlays = params.numOverlays;
-  if (!(this.numOverlays && (this.numOverlays > 0) && (this.numOverlays < 3)))
-    throw('combiner needs a numOverlays property - one or two overlays currently supported');
+	this.numOverlays = params.numOverlays
+	if (!(this.numOverlays && this.numOverlays > 0 && this.numOverlays < 3))
+		throw 'combiner needs a numOverlays property - one or two overlays currently supported'
 
-  switch (this.numOverlays) {
-    case 1: this.name = 'twoInputs'; break;
-    case 2: this.name = 'threeInputs'; break;
-  }
-  return this;
+	switch (this.numOverlays) {
+		case 1:
+			this.name = 'twoInputs'
+			break
+		case 2:
+			this.name = 'threeInputs'
+			break
+	}
+	return this
 }
 
-combine.prototype.init = async function(context) {}
-combine.prototype.kernel = combineKernel;
-combine.prototype.getKernelName = function() { return this.name; }
-combine.prototype.getKernelParams = async function(params) {
-  let kernelParams = {
-    bgIn: params.bgIn,
-    output: params.output,
-  };
+combine.prototype.init = async function (/*context*/) {}
+combine.prototype.kernel = combineKernel
+combine.prototype.getKernelName = function () {
+	return this.name
+}
+combine.prototype.getKernelParams = async function (params) {
+	let kernelParams = {
+		bgIn: params.bgIn,
+		output: params.output
+	}
 
-  switch (this.numOverlays) {
-    case 1:
-      kernelParams.ovIn = params.ovIn;
-      break;
-    case 2:
-      kernelParams.ov0In = params.ovIn[0];
-      kernelParams.ov1In = params.ovIn[1];
-      break;
-  }
-  return kernelParams;
+	switch (this.numOverlays) {
+		case 1:
+			kernelParams.ovIn = params.ovIn
+			break
+		case 2:
+			kernelParams.ov0In = params.ovIn[0]
+			kernelParams.ov1In = params.ovIn[1]
+			break
+	}
+	return kernelParams
 }
 
-module.exports = combine;
+module.exports = combine

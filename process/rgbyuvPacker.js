@@ -13,92 +13,110 @@
   limitations under the License.
 */
 
-const colMaths = require('./colourMaths.js');
+const colMaths = require('./colourMaths.js')
 
 function yuvLoader(context, colSpec, outColSpec, impl) {
-  this.context = context;
-  this.impl = impl;
+	this.context = context
+	this.impl = impl
 
-  const colMatrix2d = colMaths.ycbcr2rgbMatrix(
-    colSpec, this.impl.numBits,
-    this.impl.lumaBlack, this.impl.lumaWhite, this.impl.chromaRange
-  );
-  this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d);
+	const colMatrix2d = colMaths.ycbcr2rgbMatrix(
+		colSpec,
+		this.impl.numBits,
+		this.impl.lumaBlack,
+		this.impl.lumaWhite,
+		this.impl.chromaRange
+	)
+	this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d)
 
-  this.gammaArray = colMaths.gamma2linearLUT(colSpec);
+	this.gammaArray = colMaths.gamma2linearLUT(colSpec)
 
-  const gamutMatrix2d = colMaths.rgb2rgbMatrix(colSpec, outColSpec);
-  this.gamutMatrixArray = colMaths.matrixFlatten(gamutMatrix2d);
+	const gamutMatrix2d = colMaths.rgb2rgbMatrix(colSpec, outColSpec)
+	this.gamutMatrixArray = colMaths.matrixFlatten(gamutMatrix2d)
 
-  return this;
+	return this
 }
 
-yuvLoader.prototype.init = async function() {
-  this.colMatrix = await this.context.createBuffer(this.colMatrixArray.byteLength, 'readonly', 'none');
-  await this.colMatrix.hostAccess('writeonly');
-  Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
+yuvLoader.prototype.init = async function () {
+	this.colMatrix = await this.context.createBuffer(
+		this.colMatrixArray.byteLength,
+		'readonly',
+		'none'
+	)
+	await this.colMatrix.hostAccess('writeonly')
+	Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix)
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
-  await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
+	this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
+	await this.gammaLut.hostAccess('writeonly')
+	Buffer.from(this.gammaArray.buffer).copy(this.gammaLut)
 
-  this.gamutMatrix = await this.context.createBuffer(this.gamutMatrixArray.byteLength, 'readonly', 'none');
-  await this.gamutMatrix.hostAccess('writeonly');
-  Buffer.from(this.gamutMatrixArray.buffer).copy(this.gamutMatrix);
+	this.gamutMatrix = await this.context.createBuffer(
+		this.gamutMatrixArray.byteLength,
+		'readonly',
+		'none'
+	)
+	await this.gamutMatrix.hostAccess('writeonly')
+	Buffer.from(this.gamutMatrixArray.buffer).copy(this.gamutMatrix)
 
-  this.readProgram = await this.context.createProgram(this.impl.kernel, {
-    name: 'read',
-    globalWorkItems: this.impl.getGlobalWorkItems(),
-    workItemsPerGroup: this.impl.getWorkItemsPerGroup()
-  });
-};
+	this.readProgram = await this.context.createProgram(this.impl.kernel, {
+		name: 'read',
+		globalWorkItems: this.impl.getGlobalWorkItems(),
+		workItemsPerGroup: this.impl.getWorkItemsPerGroup()
+	})
+}
 
-yuvLoader.prototype.fromYUV = async function(params, queueNum) {
-  let kernelParams = this.impl.getKernelParams(params);
-  kernelParams.colMatrix = this.colMatrix;
-  kernelParams.gammaLut = this.gammaLut;
-  kernelParams.gamutMatrix = this.gamutMatrix;
-  return this.readProgram.run(kernelParams, queueNum);
-};
+yuvLoader.prototype.fromYUV = async function (params, queueNum) {
+	let kernelParams = this.impl.getKernelParams(params)
+	kernelParams.colMatrix = this.colMatrix
+	kernelParams.gammaLut = this.gammaLut
+	kernelParams.gamutMatrix = this.gamutMatrix
+	return this.readProgram.run(kernelParams, queueNum)
+}
 
 function yuvSaver(context, colSpec, impl) {
-  this.context = context;
-  this.impl = impl;
+	this.context = context
+	this.impl = impl
 
-  const colMatrix2d = colMaths.rgb2ycbcrMatrix(
-    colSpec, this.impl.numBits,
-    this.impl.lumaBlack, this.impl.lumaWhite, this.impl.chromaRange
-  );
-  this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d);
+	const colMatrix2d = colMaths.rgb2ycbcrMatrix(
+		colSpec,
+		this.impl.numBits,
+		this.impl.lumaBlack,
+		this.impl.lumaWhite,
+		this.impl.chromaRange
+	)
+	this.colMatrixArray = colMaths.matrixFlatten(colMatrix2d)
 
-  this.gammaArray = colMaths.linear2gammaLUT(colSpec);
-  return this;
+	this.gammaArray = colMaths.linear2gammaLUT(colSpec)
+	return this
 }
 
-yuvSaver.prototype.init = async function() {
-  this.colMatrix = await this.context.createBuffer(this.colMatrixArray.byteLength, 'readonly', 'none');
-  await this.colMatrix.hostAccess('writeonly');
-  Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix);
+yuvSaver.prototype.init = async function () {
+	this.colMatrix = await this.context.createBuffer(
+		this.colMatrixArray.byteLength,
+		'readonly',
+		'none'
+	)
+	await this.colMatrix.hostAccess('writeonly')
+	Buffer.from(this.colMatrixArray.buffer).copy(this.colMatrix)
 
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
-  await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
+	this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
+	await this.gammaLut.hostAccess('writeonly')
+	Buffer.from(this.gammaArray.buffer).copy(this.gammaLut)
 
-  this.writeProgram = await this.context.createProgram(this.impl.kernel, {
-    name: 'write',
-    globalWorkItems: this.impl.getGlobalWorkItems(),
-    workItemsPerGroup: this.impl.getWorkItemsPerGroup()
-  });
-};
+	this.writeProgram = await this.context.createProgram(this.impl.kernel, {
+		name: 'write',
+		globalWorkItems: this.impl.getGlobalWorkItems(),
+		workItemsPerGroup: this.impl.getWorkItemsPerGroup()
+	})
+}
 
-yuvSaver.prototype.toYUV = async function(params, queueNum) {
-  let kernelParams = this.impl.getKernelParams(params);
-  kernelParams.colMatrix = this.colMatrix;
-  kernelParams.gammaLut = this.gammaLut;
-  return this.writeProgram.run(kernelParams, queueNum);
-};
+yuvSaver.prototype.toYUV = async function (params, queueNum) {
+	let kernelParams = this.impl.getKernelParams(params)
+	kernelParams.colMatrix = this.colMatrix
+	kernelParams.gammaLut = this.gammaLut
+	return this.writeProgram.run(kernelParams, queueNum)
+}
 
 module.exports = {
-  yuvLoader,
-  yuvSaver
-};
+	yuvLoader,
+	yuvSaver
+}

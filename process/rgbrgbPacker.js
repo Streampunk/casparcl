@@ -13,70 +13,74 @@
   limitations under the License.
 */
 
-const colMaths = require('./colourMaths.js');
+const colMaths = require('./colourMaths.js')
 
 function rgbLoader(context, colSpec, outColSpec, impl) {
-  this.context = context;
-  this.impl = impl;
+	this.context = context
+	this.impl = impl
 
-  this.gammaArray = colMaths.gamma2linearLUT(colSpec);
+	this.gammaArray = colMaths.gamma2linearLUT(colSpec)
 
-  const gamutMatrix2d = colMaths.rgb2rgbMatrix(colSpec, outColSpec);
-  this.gamutMatrixArray = colMaths.matrixFlatten(gamutMatrix2d);
+	const gamutMatrix2d = colMaths.rgb2rgbMatrix(colSpec, outColSpec)
+	this.gamutMatrixArray = colMaths.matrixFlatten(gamutMatrix2d)
 
-  return this;
+	return this
 }
 
-rgbLoader.prototype.init = async function() {
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
-  await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
+rgbLoader.prototype.init = async function () {
+	this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
+	await this.gammaLut.hostAccess('writeonly')
+	Buffer.from(this.gammaArray.buffer).copy(this.gammaLut)
 
-  this.gamutMatrix = await this.context.createBuffer(this.gamutMatrixArray.byteLength, 'readonly', 'none');
-  await this.gamutMatrix.hostAccess('writeonly');
-  Buffer.from(this.gamutMatrixArray.buffer).copy(this.gamutMatrix);
+	this.gamutMatrix = await this.context.createBuffer(
+		this.gamutMatrixArray.byteLength,
+		'readonly',
+		'none'
+	)
+	await this.gamutMatrix.hostAccess('writeonly')
+	Buffer.from(this.gamutMatrixArray.buffer).copy(this.gamutMatrix)
 
-  this.readProgram = await this.context.createProgram(this.impl.kernel, {
-    name: 'read',
-    globalWorkItems: this.impl.getGlobalWorkItems(),
-    workItemsPerGroup: this.impl.getWorkItemsPerGroup()
-  });
-};
+	this.readProgram = await this.context.createProgram(this.impl.kernel, {
+		name: 'read',
+		globalWorkItems: this.impl.getGlobalWorkItems(),
+		workItemsPerGroup: this.impl.getWorkItemsPerGroup()
+	})
+}
 
-rgbLoader.prototype.fromRGB = async function(params, queueNum) {
-  let kernelParams = this.impl.getKernelParams(params);
-  kernelParams.gammaLut = this.gammaLut;
-  kernelParams.gamutMatrix = this.gamutMatrix;
-  return this.readProgram.run(kernelParams, queueNum);
-};
+rgbLoader.prototype.fromRGB = async function (params, queueNum) {
+	let kernelParams = this.impl.getKernelParams(params)
+	kernelParams.gammaLut = this.gammaLut
+	kernelParams.gamutMatrix = this.gamutMatrix
+	return this.readProgram.run(kernelParams, queueNum)
+}
 
 function rgbSaver(context, colSpec, impl) {
-  this.context = context;
-  this.impl = impl;
+	this.context = context
+	this.impl = impl
 
-  this.gammaArray = colMaths.linear2gammaLUT(colSpec);
-  return this;
+	this.gammaArray = colMaths.linear2gammaLUT(colSpec)
+	return this
 }
 
-rgbSaver.prototype.init = async function() {
-  this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse');
-  await this.gammaLut.hostAccess('writeonly');
-  Buffer.from(this.gammaArray.buffer).copy(this.gammaLut);
+rgbSaver.prototype.init = async function () {
+	this.gammaLut = await this.context.createBuffer(this.gammaArray.byteLength, 'readonly', 'coarse')
+	await this.gammaLut.hostAccess('writeonly')
+	Buffer.from(this.gammaArray.buffer).copy(this.gammaLut)
 
-  this.writeProgram = await this.context.createProgram(this.impl.kernel, {
-    name: 'write',
-    globalWorkItems: this.impl.getGlobalWorkItems(),
-    workItemsPerGroup: this.impl.getWorkItemsPerGroup()
-  });
-};
+	this.writeProgram = await this.context.createProgram(this.impl.kernel, {
+		name: 'write',
+		globalWorkItems: this.impl.getGlobalWorkItems(),
+		workItemsPerGroup: this.impl.getWorkItemsPerGroup()
+	})
+}
 
-rgbSaver.prototype.toRGB = async function(params, queueNum) {
-  let kernelParams = this.impl.getKernelParams(params);
-  kernelParams.gammaLut = this.gammaLut;
-  return this.writeProgram.run(kernelParams, queueNum);
-};
+rgbSaver.prototype.toRGB = async function (params, queueNum) {
+	let kernelParams = this.impl.getKernelParams(params)
+	kernelParams.gammaLut = this.gammaLut
+	return this.writeProgram.run(kernelParams, queueNum)
+}
 
 module.exports = {
-  rgbLoader,
-  rgbSaver
-};
+	rgbLoader,
+	rgbSaver
+}

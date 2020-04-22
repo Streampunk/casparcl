@@ -49,58 +49,59 @@ const resizeKernel = `
     float4 in = read_imagef(input, samplerIn, posIn);
     write_imagef(output, posOut, in);
   }
-`;
+`
 
-function resize(params) {
-  this.name = 'resize';
-  this.flipH = false;
-  this.flipV = false;
-  this.flipArr = Float32Array.from([ 0.0, 1.0, 0.0, 1.0 ]);
-  this.flipArrBytes = this.flipArr.length * this.flipArr.BYTES_PER_ELEMENT;
-  return this;
+function resize(/*params*/) {
+	this.name = 'resize'
+	this.flipH = false
+	this.flipV = false
+	this.flipArr = Float32Array.from([0.0, 1.0, 0.0, 1.0])
+	this.flipArrBytes = this.flipArr.length * this.flipArr.BYTES_PER_ELEMENT
+	return this
 }
 
-resize.prototype.updateFlip = async function(flipH, flipV, clQueue) {
-  this.flipH = flipH;
-  this.flipV = flipV;
-  this.flipArr = Float32Array.from([
-    this.flipH ?  1.0 : 0.0,
-    this.flipH ? -1.0 : 1.0,
-    this.flipV ?  1.0 : 0.0,
-    this.flipV ? -1.0 : 1.0
-  ]);
-  await this.flipVals.hostAccess('writeonly', clQueue, Buffer.from(this.flipArr.buffer));
-  return this.flipVals.hostAccess('none', clQueue);
+resize.prototype.updateFlip = async function (flipH, flipV, clQueue) {
+	this.flipH = flipH
+	this.flipV = flipV
+	this.flipArr = Float32Array.from([
+		this.flipH ? 1.0 : 0.0,
+		this.flipH ? -1.0 : 1.0,
+		this.flipV ? 1.0 : 0.0,
+		this.flipV ? -1.0 : 1.0
+	])
+	await this.flipVals.hostAccess('writeonly', clQueue, Buffer.from(this.flipArr.buffer))
+	return this.flipVals.hostAccess('none', clQueue)
 }
 
-resize.prototype.init = async function(context) {
-  this.flipVals = await context.createBuffer(this.flipArrBytes, 'readonly', 'coarse');
-  return this.updateFlip(false, false, context.queue.load);
+resize.prototype.init = async function (context) {
+	this.flipVals = await context.createBuffer(this.flipArrBytes, 'readonly', 'coarse')
+	return this.updateFlip(false, false, context.queue.load)
 }
 
-resize.prototype.kernel = resizeKernel;
-resize.prototype.getKernelName = function() { return this.name; }
-resize.prototype.getKernelParams = async function(params, clQueue) {
-  if (!((this.flipH === params.flipH) && (this.flipV === params.flipV)))
-    await this.updateFlip(params.flipH, params.flipV, clQueue);
+resize.prototype.kernel = resizeKernel
+resize.prototype.getKernelName = function () {
+	return this.name
+}
+resize.prototype.getKernelParams = async function (params, clQueue) {
+	if (!(this.flipH === params.flipH && this.flipV === params.flipV))
+		await this.updateFlip(params.flipH, params.flipV, clQueue)
 
-  if (params.scale && !(params.scale > 0.0))
-    throw('resize scale factor must be greater than zero');
+	if (params.scale && !(params.scale > 0.0)) throw 'resize scale factor must be greater than zero'
 
-  if (params.offsetX && !((params.offsetX >= -1.0) && (params.offsetX <= 1.0)))
-    throw('resize offsetX must be between -1.0 and +1.0');
+	if (params.offsetX && !(params.offsetX >= -1.0 && params.offsetX <= 1.0))
+		throw 'resize offsetX must be between -1.0 and +1.0'
 
-  if (params.offsetY && !((params.offsetY >= -1.0) && (params.offsetY <= 1.0)))
-    throw('resize offsetX must be between -1.0 and +1.0');
+	if (params.offsetY && !(params.offsetY >= -1.0 && params.offsetY <= 1.0))
+		throw 'resize offsetX must be between -1.0 and +1.0'
 
-  return {
-    input: params.input,
-    scale: params.scale || 1.0,
-    offsetX: params.offsetX || 0.0,
-    offsetY: params.offsetY || 0.0,
-    flip: this.flipVals,
-    output: params.output,
-  }
+	return {
+		input: params.input,
+		scale: params.scale || 1.0,
+		offsetX: params.offsetX || 0.0,
+		offsetY: params.offsetY || 0.0,
+		flip: this.flipVals,
+		output: params.output
+	}
 }
 
-module.exports = resize;
+module.exports = resize

@@ -224,130 +224,149 @@ const yuv422p10leKernel = `
       outputV[outOff] = v;
     }
   }
-`;
+`
 
 function getPitch(width) {
-  return width + 7 - ((width - 1) % 8);
+	return width + 7 - ((width - 1) % 8)
 }
 
 function getPitchBytes(width) {
-  return getPitch(width) * 2;
+	return getPitch(width) * 2
 }
 
 function getTotalBytes(width, height) {
-  return getPitchBytes(width) * height * 2;
+	return getPitchBytes(width) * height * 2
 }
 
 function fillBuf(buf, width, height) {
-  const lumaPitchBytes = getPitchBytes(width);
-  const chromaPitchBytes = lumaPitchBytes / 2;
-  let lOff = 0;
-  let uOff = lumaPitchBytes * height;
-  let vOff = uOff + chromaPitchBytes * height;
+	const lumaPitchBytes = getPitchBytes(width)
+	const chromaPitchBytes = lumaPitchBytes / 2
+	let lOff = 0
+	let uOff = lumaPitchBytes * height
+	let vOff = uOff + chromaPitchBytes * height
 
-  buf.fill(0);
-  let Y=64;
-  const Cb=512;
-  const Cr=512;
-  for (let y=0; y<height; ++y) {
-    let xlOff = 0;
-    let xcOff = 0;
-    for (let x=0; x<width; x+=2) {
-      buf.writeUInt16LE(Y, lOff + xlOff);
-      buf.writeUInt16LE(Y+1, lOff + xlOff + 2);
-      xlOff += 4;
-    
-      buf.writeUInt16LE(Cb, uOff + xcOff);
-      buf.writeUInt16LE(Cr, vOff + xcOff);
-      xcOff += 2;
-      Y = (938==Y)?64:Y+=2;
-    }
-    lOff += lumaPitchBytes;
-    uOff += chromaPitchBytes;
-    vOff += chromaPitchBytes;
-  }
+	buf.fill(0)
+	let Y = 64
+	const Cb = 512
+	const Cr = 512
+	for (let y = 0; y < height; ++y) {
+		let xlOff = 0
+		let xcOff = 0
+		for (let x = 0; x < width; x += 2) {
+			buf.writeUInt16LE(Y, lOff + xlOff)
+			buf.writeUInt16LE(Y + 1, lOff + xlOff + 2)
+			xlOff += 4
+
+			buf.writeUInt16LE(Cb, uOff + xcOff)
+			buf.writeUInt16LE(Cr, vOff + xcOff)
+			xcOff += 2
+			Y = 938 == Y ? 64 : (Y += 2)
+		}
+		lOff += lumaPitchBytes
+		uOff += chromaPitchBytes
+		vOff += chromaPitchBytes
+	}
 }
 
 function dumpBuf(buf, width, height, numLines) {
-  const lumaPitchBytes = getPitchBytes(width);
-  const chromaPitchBytes = lumaPitchBytes / 2;
+	const lumaPitchBytes = getPitchBytes(width)
 
-  let yLineOff = 0;
-  let uLineOff = lumaPitchBytes * height;
-  let vLineOff = uLineOff + uLineOff / 2;
-  function getYHex(off) { return buf.readUInt16LE(yLineOff + off * 2).toString(16); }
-  function getUHex(off) { return buf.readUInt16LE(uLineOff + off).toString(16); }
-  function getVHex(off) { return buf.readUInt16LE(vLineOff + off).toString(16); }
+	let yLineOff = 0
+	let uLineOff = lumaPitchBytes * height
+	let vLineOff = uLineOff + uLineOff / 2
+	function getYHex(off) {
+		return buf.readUInt16LE(yLineOff + off * 2).toString(16)
+	}
+	function getUHex(off) {
+		return buf.readUInt16LE(uLineOff + off).toString(16)
+	}
+	function getVHex(off) {
+		return buf.readUInt16LE(vLineOff + off).toString(16)
+	}
 
-  for (let l = 0; l < numLines; ++l) {
-    yLineOff = lumaPitchBytes * l;
-    uLineOff = yLineOff + lumaPitchBytes * height;
-    vLineOff = uLineOff + lumaPitchBytes * height / 2;
-    console.log(`Line ${l}: ${getUHex(0)}, ${getYHex(0)}, ${getVHex(0)}, ${getYHex(1)}; ${getUHex(2)}, ${getYHex(2)}, ${getVHex(2)}, ${getYHex(3)}; ${getUHex(4)}, ${getYHex(4)}, ${getVHex(4)}, ${getYHex(5)}; ${getUHex(6)}, ${getYHex(6)}, ${getVHex(6)}, ${getYHex(7)}`);
-  }
+	for (let l = 0; l < numLines; ++l) {
+		yLineOff = lumaPitchBytes * l
+		uLineOff = yLineOff + lumaPitchBytes * height
+		vLineOff = uLineOff + (lumaPitchBytes * height) / 2
+		console.log(
+			`Line ${l}: ${getUHex(0)}, ${getYHex(0)}, ${getVHex(0)}, ${getYHex(1)}; ${getUHex(
+				2
+			)}, ${getYHex(2)}, ${getVHex(2)}, ${getYHex(3)}; ${getUHex(4)}, ${getYHex(4)}, ${getVHex(
+				4
+			)}, ${getYHex(5)}; ${getUHex(6)}, ${getYHex(6)}, ${getVHex(6)}, ${getYHex(7)}`
+		)
+	}
 }
 
 function reader(width, height) {
-  this.width = width;
-  this.height = height;
-  return this;
+	this.width = width
+	this.height = height
+	return this
 }
 
 // process one image line per work group
-reader.prototype.pixelsPerWorkItem = 64;
-reader.prototype.getWorkItemsPerGroup = function() { return getPitch(this.width) / this.pixelsPerWorkItem; }
-reader.prototype.getGlobalWorkItems = function() { return this.getWorkItemsPerGroup() * this.height; }
+reader.prototype.pixelsPerWorkItem = 64
+reader.prototype.getWorkItemsPerGroup = function () {
+	return getPitch(this.width) / this.pixelsPerWorkItem
+}
+reader.prototype.getGlobalWorkItems = function () {
+	return this.getWorkItemsPerGroup() * this.height
+}
 
-reader.prototype.numBits = 10;
-reader.prototype.lumaBlack = 64;
-reader.prototype.lumaWhite = 940;
-reader.prototype.chromaRange = 896;
+reader.prototype.numBits = 10
+reader.prototype.lumaBlack = 64
+reader.prototype.lumaWhite = 940
+reader.prototype.chromaRange = 896
 
-reader.prototype.kernel = yuv422p10leKernel;
-reader.prototype.getKernelParams = function(params) {
-  return {
-    inputY: params.sources[0],
-    inputU: params.sources[1],
-    inputV: params.sources[2],
-    output: params.dest,
-    width: this.width
-  }
+reader.prototype.kernel = yuv422p10leKernel
+reader.prototype.getKernelParams = function (params) {
+	return {
+		inputY: params.sources[0],
+		inputU: params.sources[1],
+		inputV: params.sources[2],
+		output: params.dest,
+		width: this.width
+	}
 }
 
 function writer(width, height) {
-  this.width = width;
-  this.height = height;
-  return this;
+	this.width = width
+	this.height = height
+	return this
 }
 
 // process one image line per work group
-writer.prototype.pixelsPerWorkItem = 64;
-writer.prototype.getWorkItemsPerGroup = function() { return getPitch(this.width) / this.pixelsPerWorkItem; }
-writer.prototype.getGlobalWorkItems = function() { return this.getWorkItemsPerGroup() * this.height; }
+writer.prototype.pixelsPerWorkItem = 64
+writer.prototype.getWorkItemsPerGroup = function () {
+	return getPitch(this.width) / this.pixelsPerWorkItem
+}
+writer.prototype.getGlobalWorkItems = function () {
+	return this.getWorkItemsPerGroup() * this.height
+}
 
-writer.prototype.numBits = 10;
-writer.prototype.lumaBlack = 64;
-writer.prototype.lumaWhite = 940;
-writer.prototype.chromaRange = 896;
+writer.prototype.numBits = 10
+writer.prototype.lumaBlack = 64
+writer.prototype.lumaWhite = 940
+writer.prototype.chromaRange = 896
 
-writer.prototype.kernel = yuv422p10leKernel;
-writer.prototype.getKernelParams = function(params) {
-  return {
-    input: params.source,
-    outputY: params.dests[0],
-    outputU: params.dests[1],
-    outputV: params.dests[2],
-    width: this.width,
-    interlace: params.interlace || 0
-  }
+writer.prototype.kernel = yuv422p10leKernel
+writer.prototype.getKernelParams = function (params) {
+	return {
+		input: params.source,
+		outputY: params.dests[0],
+		outputU: params.dests[1],
+		outputV: params.dests[2],
+		width: this.width,
+		interlace: params.interlace || 0
+	}
 }
 
 module.exports = {
-  reader,
-  writer,
+	reader,
+	writer,
 
-  getPitchBytes,
-  getTotalBytes,
-  fillBuf,
-  dumpBuf
-};
+	getPitchBytes,
+	getTotalBytes,
+	fillBuf,
+	dumpBuf
+}

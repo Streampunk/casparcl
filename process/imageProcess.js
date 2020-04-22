@@ -14,25 +14,25 @@
 */
 
 function process(context, outpuWidth, outputHeight, impl) {
-  this.context = context;
-  this.outputWidth = outpuWidth;
-  this.outputHeight = outputHeight;
-  this.impl = impl;
+	this.context = context
+	this.outputWidth = outpuWidth
+	this.outputHeight = outputHeight
+	this.impl = impl
 
-  return this;
+	return this
 }
 
-process.prototype.init = async function() {
-  await this.impl.init(this.context);
-  this.processProgram = await this.context.createProgram(this.impl.kernel, {
-    name: this.impl.getKernelName(),
-    globalWorkItems: Uint32Array.from([ this.outputWidth, this.outputHeight ]),
-  });
-};
+process.prototype.init = async function () {
+	await this.impl.init(this.context)
+	this.processProgram = await this.context.createProgram(this.impl.kernel, {
+		name: this.impl.getKernelName(),
+		globalWorkItems: Uint32Array.from([this.outputWidth, this.outputHeight])
+	})
+}
 
-process.prototype.run = async function(params, clQueue) {
-  let kernelParams = await this.impl.getKernelParams(params, clQueue);
-  return this.processProgram.run(kernelParams, clQueue);
-};
+process.prototype.run = async function (params, clQueue) {
+	let kernelParams = await this.impl.getKernelParams(params, clQueue)
+	return this.processProgram.run(kernelParams, clQueue)
+}
 
-module.exports = process;
+module.exports = process

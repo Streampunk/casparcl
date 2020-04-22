@@ -191,139 +191,153 @@ const v210Kernel = `
       output[outOff] = w;
     }
   }
-`;
+`
 
 function getPitch(width) {
-  return width + 47 - ((width - 1) % 48);
+	return width + 47 - ((width - 1) % 48)
 }
 
 function getPitchBytes(width) {
-  return getPitch(width) * 8 / 3;
+	return (getPitch(width) * 8) / 3
 }
 
 function fillBuf(buf, width, height) {
-  const pitchBytes = getPitchBytes(width);
-  buf.fill(0);
-  let Y=64;
-  const Cb=512;
-  const Cr=512;
-  let yOff = 0;
-  for (let y=0; y<height; ++y) {
-    let xOff = 0;
-    for (let x=0; x<(width-width%6)/6; ++x) {
-      buf.writeUInt32LE((Cr<<20) | (Y<<10) | Cb, yOff + xOff);
-      buf.writeUInt32LE((Y<<20) | (Cb<<10) | Y, yOff + xOff + 4);
-      buf.writeUInt32LE((Cb<<20) | (Y<<10) | Cr, yOff + xOff + 8);
-      buf.writeUInt32LE((Y<<20) | (Cr<<10) | Y, yOff + xOff + 12);
-      xOff += 16;
-      Y = (940==Y)?64:++Y;
-    }
+	const pitchBytes = getPitchBytes(width)
+	buf.fill(0)
+	let Y = 64
+	const Cb = 512
+	const Cr = 512
+	let yOff = 0
+	for (let y = 0; y < height; ++y) {
+		let xOff = 0
+		for (let x = 0; x < (width - (width % 6)) / 6; ++x) {
+			buf.writeUInt32LE((Cr << 20) | (Y << 10) | Cb, yOff + xOff)
+			buf.writeUInt32LE((Y << 20) | (Cb << 10) | Y, yOff + xOff + 4)
+			buf.writeUInt32LE((Cb << 20) | (Y << 10) | Cr, yOff + xOff + 8)
+			buf.writeUInt32LE((Y << 20) | (Cr << 10) | Y, yOff + xOff + 12)
+			xOff += 16
+			Y = 940 == Y ? 64 : ++Y
+		}
 
-    const remain = width%6;
-    if (remain) {
-      buf.writeUInt32LE((Cr<<20) | (Y<<10) | Cb, yOff + xOff);
-      if (2 === remain) {
-        buf.writeUInt32LE(Y, yOff + xOff + 4);
-      } else if (4 === remain) {      
-        buf.writeUInt32LE((Y<<20) | (Cb<<10) | Y, yOff + xOff + 4);
-        buf.writeUInt32LE((Y<<10) | Cr, yOff + xOff + 8);
-      }
-    }
-    yOff += pitchBytes;
-  }   
-  return buf;
+		const remain = width % 6
+		if (remain) {
+			buf.writeUInt32LE((Cr << 20) | (Y << 10) | Cb, yOff + xOff)
+			if (2 === remain) {
+				buf.writeUInt32LE(Y, yOff + xOff + 4)
+			} else if (4 === remain) {
+				buf.writeUInt32LE((Y << 20) | (Cb << 10) | Y, yOff + xOff + 4)
+				buf.writeUInt32LE((Y << 10) | Cr, yOff + xOff + 8)
+			}
+		}
+		yOff += pitchBytes
+	}
+	return buf
 }
 
 function dumpBufUnpack(buf, width, numPixels, numLines) {
-  const pitchBytes = getPitchBytes(width);
-  let yOff = 0;
-  for (let y=0; y<numLines; ++y) {
-    let xOff = 0;
-    let s = `Line ${y}: `;
-    for (let x=0; x<numPixels/6; ++x) {
-      w0 = buf.readUInt32LE(yOff + xOff);
-      w1 = buf.readUInt32LE(yOff + xOff + 4);
-      w2 = buf.readUInt32LE(yOff + xOff + 8);
-      w3 = buf.readUInt32LE(yOff + xOff + 12);
-      s += `${w0 & 0x3ff} ${(w0 >> 10) & 0x3ff} ${(w0 >> 20) & 0x3ff} ${(w1 & 0x3ff)}, `;
-      s += `${(w1 >> 10) & 0x3ff} ${(w1 >> 20) & 0x3ff} ${(w2 & 0x3ff)} ${(w2 >> 10) & 0x3ff}, `;
-      s += `${(w2 >> 20) & 0x3ff} ${(w3 & 0x3ff)} ${(w3 >> 10) & 0x3ff} ${(w3 >> 20) & 0x3ff}`;
-      xOff += 16;
-    }
-    console.log(s);
-    yOff += pitchBytes;
-  }   
+	const pitchBytes = getPitchBytes(width)
+	let yOff = 0
+	for (let y = 0; y < numLines; ++y) {
+		let xOff = 0
+		let s = `Line ${y}: `
+		for (let x = 0; x < numPixels / 6; ++x) {
+			const w0 = buf.readUInt32LE(yOff + xOff)
+			const w1 = buf.readUInt32LE(yOff + xOff + 4)
+			const w2 = buf.readUInt32LE(yOff + xOff + 8)
+			const w3 = buf.readUInt32LE(yOff + xOff + 12)
+			s += `${w0 & 0x3ff} ${(w0 >> 10) & 0x3ff} ${(w0 >> 20) & 0x3ff} ${w1 & 0x3ff}, `
+			s += `${(w1 >> 10) & 0x3ff} ${(w1 >> 20) & 0x3ff} ${w2 & 0x3ff} ${(w2 >> 10) & 0x3ff}, `
+			s += `${(w2 >> 20) & 0x3ff} ${w3 & 0x3ff} ${(w3 >> 10) & 0x3ff} ${(w3 >> 20) & 0x3ff}`
+			xOff += 16
+		}
+		console.log(s)
+		yOff += pitchBytes
+	}
 }
 
 function dumpBuf(buf, width, numLines) {
-  let lineOff = 0;
-  function getHex(off) { return buf.readUInt32LE(lineOff + off).toString(16); }
+	let lineOff = 0
+	function getHex(off) {
+		return buf.readUInt32LE(lineOff + off).toString(16)
+	}
 
-  const pitch = getPitchBytes(width);
-  for (let l = 0; l < numLines; ++l) {
-    lineOff = l * pitch;
-    console.log(`Line ${l}: ${getHex(0)}, ${getHex(4)}, ${getHex(8)}, ${getHex(12)} ... ${getHex(128+0)}, ${getHex(128+4)}, ${getHex(128+8)}, ${getHex(128+12)}`);
-  }
+	const pitch = getPitchBytes(width)
+	for (let l = 0; l < numLines; ++l) {
+		lineOff = l * pitch
+		console.log(
+			`Line ${l}: ${getHex(0)}, ${getHex(4)}, ${getHex(8)}, ${getHex(12)} ... ${getHex(
+				128 + 0
+			)}, ${getHex(128 + 4)}, ${getHex(128 + 8)}, ${getHex(128 + 12)}`
+		)
+	}
 }
 
 function reader(width, height) {
-  this.width = width;
-  this.height = height;
-  return this;
+	this.width = width
+	this.height = height
+	return this
 }
 
 // process one image line per work group
-reader.prototype.pixelsPerWorkItem = 48;
-reader.prototype.getWorkItemsPerGroup = function() { return getPitch(this.width) / this.pixelsPerWorkItem; }
-reader.prototype.getGlobalWorkItems = function() { return this.getWorkItemsPerGroup() * this.height; }
+reader.prototype.pixelsPerWorkItem = 48
+reader.prototype.getWorkItemsPerGroup = function () {
+	return getPitch(this.width) / this.pixelsPerWorkItem
+}
+reader.prototype.getGlobalWorkItems = function () {
+	return this.getWorkItemsPerGroup() * this.height
+}
 
-reader.prototype.numBits = 10;
-reader.prototype.lumaBlack = 64;
-reader.prototype.lumaWhite = 940;
-reader.prototype.chromaRange = 896;
+reader.prototype.numBits = 10
+reader.prototype.lumaBlack = 64
+reader.prototype.lumaWhite = 940
+reader.prototype.chromaRange = 896
 
-reader.prototype.kernel = v210Kernel;
-reader.prototype.getKernelParams = function(params) {
-  return {
-    input: params.source,
-    output: params.dest,
-    width: this.width
-  }
+reader.prototype.kernel = v210Kernel
+reader.prototype.getKernelParams = function (params) {
+	return {
+		input: params.source,
+		output: params.dest,
+		width: this.width
+	}
 }
 
 function writer(width, height) {
-  this.width = width;
-  this.height = height;
-  return this;
+	this.width = width
+	this.height = height
+	return this
 }
 
 // process one image line per work group
-writer.prototype.pixelsPerWorkItem = 48;
-writer.prototype.getWorkItemsPerGroup = function() { return getPitch(this.width) / this.pixelsPerWorkItem; }
-writer.prototype.getGlobalWorkItems = function() { return this.getWorkItemsPerGroup() * this.height; }
+writer.prototype.pixelsPerWorkItem = 48
+writer.prototype.getWorkItemsPerGroup = function () {
+	return getPitch(this.width) / this.pixelsPerWorkItem
+}
+writer.prototype.getGlobalWorkItems = function () {
+	return this.getWorkItemsPerGroup() * this.height
+}
 
-writer.prototype.numBits = 10;
-writer.prototype.lumaBlack = 64;
-writer.prototype.lumaWhite = 940;
-writer.prototype.chromaRange = 896;
+writer.prototype.numBits = 10
+writer.prototype.lumaBlack = 64
+writer.prototype.lumaWhite = 940
+writer.prototype.chromaRange = 896
 
-writer.prototype.kernel = v210Kernel;
-writer.prototype.getKernelParams = function(params) {
-  return {
-    inputT: params.source[0],
-    inputB: params.source[1],
-    output: params.dest,
-    width: this.width,
-    interlace: params.interlace || 0
-  }
+writer.prototype.kernel = v210Kernel
+writer.prototype.getKernelParams = function (params) {
+	return {
+		inputT: params.source[0],
+		inputB: params.source[1],
+		output: params.dest,
+		width: this.width,
+		interlace: params.interlace || 0
+	}
 }
 
 module.exports = {
-  reader,
-  writer,
+	reader,
+	writer,
 
-  getPitchBytes,
-  fillBuf,
-  dumpBuf,
-  dumpBufUnpack
-};
+	getPitchBytes,
+	fillBuf,
+	dumpBuf,
+	dumpBufUnpack
+}
