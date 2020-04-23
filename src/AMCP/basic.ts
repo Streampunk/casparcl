@@ -24,7 +24,7 @@ import {
 	Packet,
 	Frame
 } from '../../../beamcoder'
-import redio, { RedioPipe, isEnd, isNil } from '../../../redioactive/src/redio'
+import redio, { RedioPipe, isEnd, isNil } from 'redioactive'
 
 const wait = async (t: number): Promise<void> =>
 	new Promise((resolve) => {
@@ -116,7 +116,6 @@ class Player {
 	}
 
 	play(): void {
-		console.log(`${this.id}: play`)
 		this.vidFilter?.each(async (frame) => {
 			console.log('FRM:', frame.pts)
 			return wait(1000)
@@ -207,7 +206,7 @@ export class Basic {
 	 * If additional parameters (see LOADBG) are provided then the provided clip will first be loaded to the background.
 	 */
 	play(chanLay: ChanLayer, params: string[]): boolean {
-		console.log('play', params)
+		// console.log('play', params)
 		const success = chanLay.valid
 		if (success) {
 			const player = this.createPlayer(chanLay)

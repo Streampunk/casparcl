@@ -1,8 +1,13 @@
 {
   "name": "casparcl",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Implementing the features of CasparCG with Node.JS and OpenCL.",
-  "main": "dist/index.js",
+	"main": "lib/index.js",
+	"scripts": {
+		"build": "tsc",
+		"lint": "eslint . --ext .js,.ts",
+		"lint:fix": "yarn lint -- --fix"
+	},
   "repository": "https://github.com/Streampunk/casparcl.git",
   "author": "Richard Cartwright <spark@streampunk.media>",
   "license": "GPL-3.0-or-later",
@@ -12,8 +17,9 @@
     "highland": "^2.13.5",
     "koa": "^2.11.0",
     "macadam": "^2.0.11",
-    "nodencl": "^1.2.4",
-    "osc": "^2.4.1",
+    "nodencl": "^1.2.5",
+		"osc": "^2.4.1",
+		"redioactive": "^0.0.3",
     "request": "^2.88.0",
     "request-promise-native": "^1.0.8"
   },
@@ -21,6 +27,7 @@
     "@types/highland": "^2.12.9",
     "@types/koa": "^2.11.3",
     "@types/koa__cors": "^3.0.1",
+    "@types/node": "^12.12.35",
     "@typescript-eslint/eslint-plugin": "2.29.0",
     "@typescript-eslint/parser": "^2.29.0",
     "eslint": "^6.8.0",

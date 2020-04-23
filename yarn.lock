@@ -220,6 +220,11 @@
   resolved "https://registry.yarnpkg.com/@types/node/-/node-13.13.2.tgz#160d82623610db590a64e8ca81784e11117e5a54"
   integrity sha512-LB2R1Oyhpg8gu4SON/mfforE525+Hi/M1ineICEDftqNVTyFg1aRIeGuTvXAoWHc4nbrFncWtJgMmoyRvuGh7A==
 
+"@types/node@^12.12.35":
+  version "12.12.37"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-12.12.37.tgz#cb4782d847f801fa58316da5b4801ca3a59ae790"
+  integrity sha512-4mXKoDptrXAwZErQHrLzpe0FN/0Wmf5JRniSVIdwUrtDf9wnmEV1teCNLBo/TwuXhkK/bVegoEn/wmb+x0AuPg==
+
 "@types/qs@*":
   version "6.9.1"
   resolved "https://registry.yarnpkg.com/@types/qs/-/qs-6.9.1.tgz#937fab3194766256ee09fcd40b781740758617e7"
@@ -1478,10 +1483,10 @@ node-abi@^2.7.0:
   dependencies:
     semver "^5.4.1"
 
-nodencl@^1.2.4:
-  version "1.2.4"
-  resolved "https://registry.yarnpkg.com/nodencl/-/nodencl-1.2.4.tgz#fc7b827e8ab7654a502618efb70db803c8c03c0f"
-  integrity sha512-sV/cPzDh3HD734FUJKtu5G7+LK4JJ5/MnhZB2OaIkQZ+OInDlhsidovtgaoNBXO/j89fox52HXfvnE6IgRVFRQ==
+nodencl@^1.2.5:
+  version "1.2.5"
+  resolved "https://registry.yarnpkg.com/nodencl/-/nodencl-1.2.5.tgz#5ece4c4bf2d0c415fa261760de396a7e947864fe"
+  integrity sha512-cTlmNzNW56hhlIFc/TOLbXx/FlD4jpsdgRC6T2aXgjOP3Mm8YDRNzy+hTWEqIoAoC2SkM7UmSINIoRWCknqxlw==
   dependencies:
     bindings "^1.5.0"
     segfault-handler "^1.3.0"
@@ -1700,6 +1705,11 @@ readable-stream@^3.1.1, readable-stream@^3.4.0:
     inherits "^2.0.3"
     string_decoder "^1.1.1"
     util-deprecate "^1.0.1"
+
+redioactive@^0.0.3:
+  version "0.0.3"
+  resolved "https://registry.yarnpkg.com/redioactive/-/redioactive-0.0.3.tgz#37d42037d28736b60c8c8365482ad34d67ef80c2"
+  integrity sha512-5ryWizpvTdFc546WZKyhTrx3ReeGKAUGDwGblrhWcdDrXNlePPW1i5Ws9G03mqrYTdD6zamOHeukC5CS54+qQg==
 
 regexpp@^2.0.1:
   version "2.0.1"

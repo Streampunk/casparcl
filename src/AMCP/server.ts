@@ -21,7 +21,6 @@ let cmds: Commands
 let ccgResponses = responses218
 
 export function processCommand(command: string[] | null, token = ''): string {
-	console.log('Cmd:', command)
 	if (!command) {
 		return '400 ERROR'
 	}
@@ -102,7 +101,7 @@ export async function start(commands?: Commands): Promise<string> {
 		})
 		server.listen(5250, () => {
 			resolved = true
-			resolve('Mock CasparCG server AMCP protocol running on port 5250')
+			resolve('CasparCL server AMCP protocol running on port 5250')
 		})
 	})
 }
@@ -116,13 +115,13 @@ export async function stop(): Promise<string> {
 		server.close((e) => {
 			if (e) return reject(e)
 			resolved = true
-			resolve('Mock CasparCG server closed')
+			resolve('CasparCL server closed')
 		})
 	})
 }
 
 server.on('listening', () => {
-	// console.log('Mock CasparCG server AMCP protocol running on port 5250')
+	// console.log('CasparCL server AMCP protocol running on port 5250')
 })
 
 server.on('connection', (sock) => {
