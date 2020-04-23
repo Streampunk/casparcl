@@ -14,16 +14,7 @@
 */
 
 import { Commands, ChanLayer } from './commands'
-import {
-	Demuxer,
-	demuxer,
-	Decoder,
-	decoder,
-	Filterer,
-	filterer,
-	Packet,
-	Frame
-} from '../../../beamcoder'
+import { Demuxer, demuxer, Decoder, decoder, Filterer, filterer, Packet, Frame } from 'beamcoder'
 import redio, { RedioPipe, isEnd, isNil } from 'redioactive'
 
 const wait = async (t: number): Promise<void> =>
