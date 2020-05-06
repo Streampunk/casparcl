@@ -14,8 +14,8 @@
 */
 
 const addon = require('nodencl')
-const rgbyuv = require('../process/rgbyuvPacker.js')
-const yuv422p10_io = require('../process/yuv422p10_io.js')
+const io = require('../lib/process/io.js')
+const yuv422p10_io = require('../lib/process/yuv422p10.js')
 
 function dumpFloatBuf(buf, width, height, numPixels, numLines) {
 	const r = (b, o) => b.readFloatLE(o).toFixed(4)
@@ -34,7 +34,8 @@ async function noden() {
 		platformIndex: platformIndex,
 		deviceIndex: deviceIndex
 	})
-	const platformInfo = await context.getPlatformInfo()
+	await context.initialise()
+	const platformInfo = context.getPlatformInfo()
 	// console.log(JSON.stringify(platformInfo, null, 2));
 	console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type)
 
@@ -43,50 +44,43 @@ async function noden() {
 	const width = 1920
 	const height = 1080
 
-	const yuv422p10Loader = new rgbyuv.yuvLoader(
+	const yuv422p10Loader = new io.ToRGBA(
 		context,
 		colSpecRead,
 		colSpecWrite,
-		new yuv422p10_io.reader(width, height)
+		new yuv422p10_io.Reader(width, height)
 	)
 	await yuv422p10Loader.init()
 
-	const yuv422p10Saver = new rgbyuv.yuvSaver(
+	const yuv422p10Saver = new io.FromRGBA(
 		context,
 		colSpecWrite,
-		new yuv422p10_io.writer(width, height)
+		new yuv422p10_io.Writer(width, height, false)
 	)
 	await yuv422p10Saver.init()
 
-	const lumaBytes = yuv422p10_io.getPitchBytes(width) * height
-	const chromaBytes = lumaBytes / 2
-	const numBytesyuv422p10 = yuv422p10_io.getTotalBytes(width, height)
+	const srcs = await yuv422p10Loader.createSources()
+	const rgbaDst = await yuv422p10Loader.createDest({ width: width, height: height })
+
+	const dsts = await yuv422p10Saver.createDests()
+
+	const numBytes = yuv422p10Loader.getNumBytes()
+	const lumaBytes = numBytes[0]
+	const chromaBytes = numBytes[1]
+	const numBytesyuv422p10 = yuv422p10Loader.getTotalBytes()
 	const yuv422p10Src = Buffer.allocUnsafe(numBytesyuv422p10)
 	yuv422p10_io.fillBuf(yuv422p10Src, width, height)
 	yuv422p10_io.dumpBuf(yuv422p10Src, width, height, 4)
 
-	const srcs = [
-		await context.createBuffer(lumaBytes, 'readonly', 'coarse'),
-		await context.createBuffer(chromaBytes, 'readonly', 'coarse'),
-		await context.createBuffer(chromaBytes, 'readonly', 'coarse')
-	]
-	await srcs[0].hostAccess('writeonly', yuv422p10Src.slice(0, lumaBytes))
-	await srcs[1].hostAccess('writeonly', yuv422p10Src.slice(lumaBytes, lumaBytes + chromaBytes))
+	await srcs[0].hostAccess('writeonly', 0, yuv422p10Src.slice(0, lumaBytes))
+	await srcs[1].hostAccess('writeonly', 0, yuv422p10Src.slice(lumaBytes, lumaBytes + chromaBytes))
 	await srcs[2].hostAccess(
 		'writeonly',
+		0,
 		yuv422p10Src.slice(lumaBytes + chromaBytes, lumaBytes + chromaBytes * 2)
 	)
 
-	const numBytesRGBA = width * height * 4 * 4
-	const rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse')
-
-	const dsts = [
-		await context.createBuffer(lumaBytes, 'writeonly', 'coarse'),
-		await context.createBuffer(chromaBytes, 'writeonly', 'coarse'),
-		await context.createBuffer(chromaBytes, 'writeonly', 'coarse')
-	]
-
-	let timings = await yuv422p10Loader.fromYUV({ sources: srcs, dest: rgbaDst })
+	let timings = await yuv422p10Loader.processFrame(srcs, rgbaDst)
 	console.log(
 		`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`
 	)
@@ -94,7 +88,7 @@ async function noden() {
 	await rgbaDst.hostAccess('readonly')
 	dumpFloatBuf(rgbaDst, width, height, 2, 4)
 
-	timings = await yuv422p10Saver.toYUV({ source: rgbaDst, dests: dsts })
+	timings = await yuv422p10Saver.processFrame(rgbaDst, dsts)
 	console.log(
 		`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`
 	)

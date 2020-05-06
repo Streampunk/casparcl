@@ -17,15 +17,21 @@ const request = require('request-promise-native')
 const Koa = require('koa')
 const cors = require('@koa/cors')
 const beamcoder = require('beamcoder')
-const io = require('../process/io.js')
-const vidSwitch = require('../process/switcher.js')
+
+const io = require('../lib/process/io')
+const v210 = require('../lib/process/v210')
+const yuv422p10 = require('../lib/process/yuv422p10')
+const bgra8 = require('../lib/process/bgra8')
+const rgba8 = require('../lib/process/rgba8')
+const vidSwitch = require('../lib/process/switch')
+
 const macadam = require('macadam')
 const oscServer = require('./oscServer.js')
 
 const kapp = new Koa()
 kapp.use(cors())
 
-const enableMacadam = true
+const enableMacadam = false
 const enableDeinterlace = true
 const width = 1920
 const height = 1080
@@ -51,27 +57,25 @@ let vidSwitcher
 let webSaver
 let v210Saver
 
-let bgSrcs = []
-let ovSrcs = []
-let rgbaBG = []
-let rgbaOV = []
-let rgbaDst = []
-let v210Dst = []
-let webDst = []
 let lastWeb
 
 async function loadFrame(context, srcs, overlay, clQueue) {
 	// const start = process.hrtime();
-	const c = srcs[0].count % 2
-	const numFields = srcs[0].data.length
+	const numFields = srcs[0].source.data.length
+
+	const bgSrcs = []
+	const ovSrcs = []
 
 	for (let field = 0; field < numFields; ++field) {
-		let loadPromises = srcs.map((src, i) =>
-			bgSrcs[field][c][i].loader.loadFrame(src.data[field].data, bgSrcs[field][c][i].bufs, clQueue)
-		)
-		loadPromises.push(
-			ovSrcs[field][c].loader.loadFrame(overlay.data, ovSrcs[field][c].bufs, clQueue)
-		)
+		bgSrcs.push([])
+		const loadPromises = srcs.map(async (src, i) => {
+			bgSrcs[field].push({ loader: src.loader, sources: await src.loader.createSources() })
+			return src.loader.loadFrame(src.source.data[field].data, bgSrcs[field][i].sources, clQueue)
+		})
+
+		ovSrcs.push({ loader: overlay.loader, sources: await overlay.loader.createSources() })
+		loadPromises.push(overlay.loader.loadFrame(overlay.source.data, ovSrcs[field].sources, clQueue))
+
 		await Promise.all(loadPromises)
 	}
 
@@ -81,28 +85,47 @@ async function loadFrame(context, srcs, overlay, clQueue) {
 	await context.waitFinish(clQueue)
 	// const done = process.hrtime(start);
 	// console.log(`Load done-${srcs[0].count}: ${(done[0] * 1000.0 + done[1] / 1000000.0).toFixed(2)}`);
-	return { count: srcs[0].count, numFields: numFields }
+	return { count: srcs[0].source.count, numFields: numFields, bgSrcs: bgSrcs, ovSrcs: ovSrcs }
 }
 
 async function processFrame(context, params, clQueue) {
 	// const start = process.hrtime();
-	const c = params.count % 2
+
+	const rgbaBGs = []
+	const rgbaOVs = []
+	const rgbaDsts = []
+	const v210Dsts = await v210Saver.createDests()
+	const webDsts = await webSaver.createDests()
 
 	for (let field = 0; field < params.numFields; ++field) {
-		const srcs = bgSrcs[field][c]
-		const ovs = ovSrcs[field][c]
-		let processPromises = srcs.map((src, i) =>
-			bgSrcs[field][c][i].loader.processFrame(src.bufs, rgbaBG[field][i], clQueue)
-		)
-		processPromises.push(ovs.loader.processFrame(ovs.bufs, rgbaOV[field], clQueue))
+		const srcs = params.bgSrcs[field]
+		const ovs = params.ovSrcs[field]
+		rgbaBGs.push([])
+		const processPromises = srcs.map(async (src, i) => {
+			rgbaBGs[field].push(await src.loader.createDest({ width: width, height: height }))
+			return src.loader.processFrame(src.sources, rgbaBGs[field][i], clQueue)
+		})
 
-		let s0 = 0
-		let s1 = numInputs > 1 ? 1 : 0
+		rgbaOVs.push(await ovs.loader.createDest({ width: width, height: height }))
+		processPromises.push(ovs.loader.processFrame(ovs.sources, rgbaOVs[field], clQueue))
+
+		rgbaDsts.push(
+			await context.createBuffer(
+				v210Loader.getNumBytesRGBA(),
+				'readwrite',
+				'coarse',
+				{ width: width, height: height },
+				'processFrame'
+			)
+		)
+
+		const s0 = 0
+		const s1 = numInputs > 1 ? 1 : 0
 		processPromises.push(
 			vidSwitcher.processFrame(
 				[
 					{
-						input: rgbaBG[field][s0],
+						input: rgbaBGs[field][s0],
 						scale: scale0,
 						offsetX: offset0,
 						offsetY: 0.0,
@@ -111,7 +134,7 @@ async function processFrame(context, params, clQueue) {
 						rotate: rotate
 					},
 					{
-						input: rgbaBG[field][s1],
+						input: rgbaBGs[field][s1],
 						scale: scale1,
 						offsetX: offset1,
 						offsetY: 0.0,
@@ -121,44 +144,59 @@ async function processFrame(context, params, clQueue) {
 					}
 				],
 				{ wipe: true, frac: wipeFrac },
-				rgbaOV[field],
-				rgbaDst[field],
+				[rgbaOVs[field]],
+				rgbaDsts[field],
 				clQueue
 			)
 		)
 		await Promise.all(processPromises)
-	}
 
-	await Promise.all([
-		v210Saver.processFrame(rgbaDst, params.numFields, v210Dst[c], clQueue),
-		webSaver.processFrame(rgbaDst, params.numFields, webDst[c], clQueue)
-	])
+		const interlace = enableDeinterlace ? 0x1 | (field << 1) : 0
+		await Promise.all([
+			enableMacadam
+				? processPromises.push(
+						v210Saver.processFrame(rgbaDsts[field], v210Dsts, clQueue, interlace)
+				  )
+				: Promise.resolve(),
+			field === 0
+				? processPromises.push(webSaver.processFrame(rgbaDsts[field], webDsts, clQueue))
+				: Promise.resolve()
+		])
+
+		await Promise.all(processPromises)
+		srcs.forEach((sArr) => sArr.sources.forEach((s) => s.release()))
+		ovs.sources.forEach((s) => s.release())
+		rgbaDsts.forEach((s) => s.release())
+	}
 
 	// const end = process.hrtime(start);
 	// console.log(`OpenCL-${params.count}: ${(end[1] / 1000000.0).toFixed(2)}`);
 
 	await context.waitFinish(clQueue)
+	rgbaBGs.forEach((sArr) => sArr.forEach((s) => s.release()))
+	rgbaOVs.forEach((s) => s.release())
+
 	// const done = process.hrtime(start);
 	// console.log(`OpenCL done-${params.count}: ${(done[0] * 1000.0 + done[1] / 1000000.0).toFixed(2)}`);
-	return { count: params.count }
+	return { count: params.count, v210Dsts: v210Dsts, webDsts: webDsts }
 }
 
 async function saveFrame(context, params, clQueue) {
 	// const start = process.hrtime();
-	const c = params.count % 2
 
 	await Promise.all([
-		v210Saver.saveFrame(v210Dst[c], clQueue),
-		webSaver.saveFrame(webDst[c], clQueue)
+		enableMacadam ? v210Saver.saveFrame(params.v210Dsts[0], clQueue) : Promise.resolve(),
+		webSaver.saveFrame(params.webDsts[0], clQueue)
 	])
 
 	// const end = process.hrtime(start);
 	// console.log(`Save-${params.count}: ${(end[1] / 1000000.0).toFixed(2)}`);
 
 	await context.waitFinish(clQueue)
+
 	// const done = process.hrtime(start);
 	// console.log(`Save done-${params.count}: ${(done[0] * 1000.0 + done[1] / 1000000.0).toFixed(2)}`);
-	return [v210Dst[c], webDst[c]]
+	return [params.v210Dsts[0], params.webDsts[0]]
 }
 
 async function init() {
@@ -169,7 +207,8 @@ async function init() {
 		deviceIndex: deviceIndex,
 		overlapping: true
 	})
-	const platformInfo = await context.getPlatformInfo()
+	await context.initialise()
+	const platformInfo = context.getPlatformInfo()
 	console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type)
 
 	let demuxer = await beamcoder.demuxer('M:/dpp/AS11_DPP_HD_EXAMPLE_1.mxf')
@@ -201,63 +240,40 @@ async function init() {
 	const colSpecWrite = '709'
 	const webColSpecWrite = 'sRGB'
 
-	v210Loader = new io.toRGBA(context, width, height, 'v210')
-	await v210Loader.init({ colSpecRead: bgColSpecRead, colSpecWrite: colSpecWrite })
+	v210Loader = new io.ToRGBA(context, bgColSpecRead, colSpecWrite, new v210.Reader(width, height))
+	await v210Loader.init()
 
-	yuv422p10Loader = new io.toRGBA(context, width, height, 'yuv422p10')
-	await yuv422p10Loader.init({ colSpecRead: bgColSpecRead, colSpecWrite: colSpecWrite })
+	yuv422p10Loader = new io.ToRGBA(
+		context,
+		bgColSpecRead,
+		colSpecWrite,
+		new yuv422p10.Reader(width, height)
+	)
+	await yuv422p10Loader.init()
 
-	bgra8Loader = new io.toRGBA(context, width, height, 'bgra8')
-	await bgra8Loader.init({ colSpecRead: ovColSpecRead, colSpecWrite: colSpecWrite })
+	bgra8Loader = new io.ToRGBA(context, ovColSpecRead, colSpecWrite, new bgra8.Reader(width, height))
+	await bgra8Loader.init()
 
-	vidSwitcher = new vidSwitch(context, width, height, 2, 1)
+	vidSwitcher = new vidSwitch.default(context, width, height, 2, 1)
 	await vidSwitcher.init()
 
-	v210Saver = new io.fromRGBA(context, width, height, 'v210')
-	await v210Saver.init({ colSpec: colSpecWrite })
+	v210Saver = new io.FromRGBA(
+		context,
+		colSpecWrite,
+		new v210.Writer(width, height, enableDeinterlace)
+	)
+	await v210Saver.init()
 
-	webSaver = new io.fromRGBA(context, width / 2, height / 2, 'rgba8')
-	await webSaver.init({ colSpec: webColSpecWrite, srcWidth: width, srcHeight: height })
+	webSaver = new io.FromRGBA(
+		context,
+		webColSpecWrite,
+		new rgba8.Writer(width / 2, height / 2, false),
+		width,
+		height
+	)
+	await webSaver.init()
 
-	const numBytesRGBA = width * height * 4 * 4
-	for (let f = 0; f < 2; ++f) {
-		bgSrcs[f] = []
-		ovSrcs[f] = []
-		for (let c = 0; c < 2; ++c) {
-			bgSrcs[f][c] = []
-			for (let i = 0; i < numInputs; ++i) {
-				const loader = enableMacadam && 0 == i ? v210Loader : yuv422p10Loader
-				bgSrcs[f][c][i] = { loader: loader, bufs: await loader.createBuffers() }
-			}
-			ovSrcs[f][c] = { loader: bgra8Loader, bufs: await bgra8Loader.createBuffers() }
-		}
-
-		rgbaBG[f] = []
-		for (let i = 0; i < numInputs; ++i)
-			rgbaBG[f][i] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', {
-				width: width,
-				height: height
-			})
-		rgbaOV[f] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', {
-			width: width,
-			height: height
-		})
-		rgbaDst[f] = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse', {
-			width: width,
-			height: height
-		})
-	}
-
-	for (let c = 0; c < 2; ++c) {
-		v210Dst[c] = await context.createBuffer(v210Saver.getNumBytes(), 'writeonly', 'coarse')
-		v210Dst[c].interlaced = false
-		// v210Dst[c].tff = true;
-
-		webDst[c] = await context.createBuffer(webSaver.getNumBytes(), 'writeonly', 'coarse')
-		webDst[c].interlaced = false
-	}
-
-	lastWeb = Buffer.alloc(webSaver.getNumBytes())
+	lastWeb = Buffer.alloc(webSaver.getTotalBytes())
 
 	kapp.use(async (ctx) => {
 		ctx.body = lastWeb
@@ -381,9 +397,16 @@ async function init() {
 	while (true) {
 		let work = []
 		let stamp = process.hrtime()
+		// if (result.length >= 7) {
+		// 	result[6].buf.release()
+		// }
 		if (result.length >= 6) {
 			result[5][1].copy(lastWeb)
-			if (enableMacadam) work[6] = playback.displayFrame(result[5][0])
+			if (enableMacadam) {
+				work[6] = playback.displayFrame(result[5][0])
+			}
+			result[5][0].release()
+			result[5][1].release()
 		}
 		if (result.length >= 5) {
 			work[5] = saveFrame(context, result[4], context.queue.unload)
@@ -394,9 +417,9 @@ async function init() {
 		if (result.length >= 3) {
 			if (result[2][0].data.length) {
 				let srcs = []
-				if (enableMacadam) srcs.push(result[2][1])
-				srcs.push(result[2][0])
-				const ovs = enableMacadam ? result[2][2] : result[2][1]
+				if (enableMacadam) srcs.push({ loader: v210Loader, source: result[2][1] })
+				srcs.push({ loader: yuv422p10Loader, source: result[2][0] })
+				const ovs = { loader: bgra8Loader, source: result[2][enableMacadam ? 2 : 1] }
 				work[3] = loadFrame(context, srcs, ovs, context.queue.load)
 			}
 		}
@@ -416,7 +439,12 @@ async function init() {
 		let diff = process.hrtime(start)
 		let wait = counter * 40 - (diff[0] * 1000 + ((diff[1] / 1000000) | 0))
 		await waitForIt(wait)
-		console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`)
+		diff = process.hrtime(stamp)
+		console.log(
+			`Clunk ${counter++} completed in ${
+				diff[0] * 1000 + ((diff[1] / 1000000) | 0)
+			} waiting ${wait}`
+		)
 	}
 }
 

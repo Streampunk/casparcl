@@ -13,11 +13,7 @@
   limitations under the License.
 */
 
-export interface ChanLayer {
-	valid: boolean
-	channel: number
-	layer: number
-}
+import { ChanLayer } from '../chanLayer'
 
 function chanLayerFromString(chanLayStr: string): ChanLayer {
 	let valid = false
@@ -37,7 +33,7 @@ function chanLayerFromString(chanLayStr: string): ChanLayer {
 
 interface CmdEntry {
 	cmd: string
-	fn: (chanLayer: ChanLayer, params: string[]) => boolean
+	fn: (chanLayer: ChanLayer, params: string[]) => Promise<boolean>
 }
 
 export class Commands {
@@ -50,12 +46,12 @@ export class Commands {
 	add(entry: CmdEntry): void {
 		this.map.push(entry)
 	}
-	process(command: string[]): boolean {
+	async process(command: string[]): Promise<boolean> {
 		let result = false
 		const entry = this.map.find(({ cmd }) => cmd === command[0])
 		if (entry) {
 			const chanLayer = chanLayerFromString(command[1])
-			result = entry.fn(chanLayer, command.slice(chanLayer ? 2 : 1))
+			result = await entry.fn(chanLayer, command.slice(chanLayer ? 2 : 1))
 		}
 
 		return result

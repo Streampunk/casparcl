@@ -1,16 +1,12 @@
-export interface ChanLayer {
-    valid: boolean;
-    channel: number;
-    layer: number;
-}
+import { ChanLayer } from '../chanLayer';
 interface CmdEntry {
     cmd: string;
-    fn: (chanLayer: ChanLayer, params: string[]) => boolean;
+    fn: (chanLayer: ChanLayer, params: string[]) => Promise<boolean>;
 }
 export declare class Commands {
     private readonly map;
     constructor();
     add(entry: CmdEntry): void;
-    process(command: string[]): boolean;
+    process(command: string[]): Promise<boolean>;
 }
 export {};

@@ -13,6 +13,7 @@
   limitations under the License.
 */
 
+import { clContext as nodenCLContext } from 'nodencl'
 import { start, processCommand } from './AMCP/server'
 import { Commands } from './AMCP/commands'
 import { Basic } from './AMCP/basic'
@@ -20,20 +21,36 @@ import Koa from 'koa'
 import cors from '@koa/cors'
 import readline from 'readline'
 
+const initialiseOpenCL = async (): Promise<nodenCLContext> => {
+	const platformIndex = 0
+	const deviceIndex = 0
+	const clContext = new nodenCLContext({
+		platformIndex: platformIndex,
+		deviceIndex: deviceIndex,
+		overlapping: true
+	})
+	await clContext.initialise()
+	const platformInfo = clContext.getPlatformInfo()
+	console.log(
+		`OpenCL accelerator running on device from vendor '${platformInfo.vendor}', type '${platformInfo.devices[deviceIndex].type}'`
+	)
+	return clContext
+}
+
 const rl = readline.createInterface({
 	input: process.stdin,
 	output: process.stdout,
 	prompt: 'AMCP> '
 })
 
-rl.on('line', (input) => {
+rl.on('line', async (input) => {
 	if (input === 'q') {
 		process.kill(process.pid, 'SIGTERM')
 	}
 
 	if (input !== '') {
 		console.log(`AMCP received: ${input}`)
-		processCommand(input.toUpperCase().match(/"[^"]+"|""|\S+/g))
+		await processCommand(input.toUpperCase().match(/"[^"]+"|""|\S+/g))
 	}
 
 	rl.prompt()
@@ -55,7 +72,9 @@ const server = kapp.listen(3001)
 process.on('SIGHUP', () => server.close)
 
 const commands: Commands = new Commands()
-const basic = new Basic()
-basic.addCmds(commands)
+initialiseOpenCL().then((context) => {
+	const basic = new Basic(context)
+	basic.addCmds(commands)
+})
 
-start(commands).then(console.log, console.error)
+start(commands).then((fulfilled) => console.log('Command:', fulfilled), console.error)

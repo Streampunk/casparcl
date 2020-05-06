@@ -1,6 +1,6 @@
 {
   "name": "casparcl",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "description": "Implementing the features of CasparCG with Node.JS and OpenCL.",
 	"main": "lib/index.js",
 	"scripts": {

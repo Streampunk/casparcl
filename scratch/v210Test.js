@@ -14,8 +14,8 @@
 */
 
 const addon = require('nodencl')
-const rgbyuv = require('../process/rgbyuvPacker.js')
-const v210_io = require('../process/v210_io.js')
+const io = require('../lib/process/io.js')
+const v210_io = require('../lib/process/v210.js')
 
 function dumpFloatBuf(buf, width, numPixels, numLines) {
 	const r = (b, o) => b.readFloatLE(o).toFixed(4)
@@ -34,7 +34,8 @@ async function noden() {
 		platformIndex: platformIndex,
 		deviceIndex: deviceIndex
 	})
-	const platformInfo = await context.getPlatformInfo()
+	await context.initialise()
+	const platformInfo = context.getPlatformInfo()
 	// console.log(JSON.stringify(platformInfo, null, 2));
 	console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type)
 
@@ -43,30 +44,28 @@ async function noden() {
 	const width = 1920
 	const height = 1080
 
-	const v210Loader = new rgbyuv.yuvLoader(
+	const v210Loader = new io.ToRGBA(
 		context,
 		colSpecRead,
 		colSpecWrite,
-		new v210_io.reader(width, height)
+		new v210_io.Reader(width, height)
 	)
 	await v210Loader.init()
 
-	const v210Saver = new rgbyuv.yuvSaver(context, colSpecWrite, new v210_io.writer(width, height))
+	const v210Saver = new io.FromRGBA(context, colSpecWrite, new v210_io.Writer(width, height, false))
 	await v210Saver.init()
 
-	const numBytesV210 = v210_io.getPitchBytes(width) * height
-	const v210Src = await context.createBuffer(numBytesV210, 'readonly', 'coarse')
+	const v210Srcs = await v210Loader.createSources()
+	const rgbaDst = await v210Loader.createDest({ width: width, height: height })
 
-	const numBytesRGBA = width * height * 4 * 4
-	const rgbaDst = await context.createBuffer(numBytesRGBA, 'readwrite', 'coarse')
+	const v210Dsts = await v210Saver.createDests()
 
-	const v210Dst = await context.createBuffer(numBytesV210, 'writeonly', 'coarse')
-
+	const v210Src = v210Srcs[0]
 	await v210Src.hostAccess('writeonly')
 	v210_io.fillBuf(v210Src, width, height)
 	v210_io.dumpBuf(v210Src, width, 4)
 
-	let timings = await v210Loader.fromYUV({ source: v210Src, dest: rgbaDst })
+	let timings = await v210Loader.processFrame(v210Srcs, rgbaDst)
 	console.log(
 		`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`
 	)
@@ -74,11 +73,12 @@ async function noden() {
 	await rgbaDst.hostAccess('readonly')
 	dumpFloatBuf(rgbaDst, width, 2, 4)
 
-	timings = await v210Saver.toYUV({ source: rgbaDst, dest: v210Dst })
+	timings = await v210Saver.processFrame(rgbaDst, v210Dsts)
 	console.log(
 		`${timings.dataToKernel}, ${timings.kernelExec}, ${timings.dataFromKernel}, ${timings.totalTime}`
 	)
 
+	const v210Dst = v210Dsts[0]
 	await v210Dst.hostAccess('readonly')
 	v210_io.dumpBuf(v210Dst, width, 4)
 
