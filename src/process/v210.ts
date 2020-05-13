@@ -111,7 +111,6 @@ const v210Kernel = `
                       __private unsigned int interlace,
                       __constant float4* restrict colMatrix,
                       __global float* restrict gammaLut) {
-    uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
     // 48 pixels per workItem = 8 output uint4s per work item
@@ -119,9 +118,10 @@ const v210Kernel = `
     uint numLoops = numPixels / 6;
     uint remain = numPixels % 6;
 
-    uint interlaceOff = (3 == interlace) ? 1 : 0;
-    uint inOff = width * (interlaceOff + get_group_id(0)) + get_local_id(0) * 48;
-    uint outOff = 8 * (interlaceOff + item);
+		uint interlaceOff = (3 == interlace) ? 1 : 0;
+		uint line = get_group_id(0) * ((0 == interlace) ? 1 : 2) + interlaceOff;
+    uint inOff = width * line + get_local_id(0) * 48;
+		uint outOff = width * line / 6 + get_local_id(0) * 8;
 
     if (48 != numPixels) {
       // clear the output buffer for the last item, partially overwritten below

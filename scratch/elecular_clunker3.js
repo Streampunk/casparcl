@@ -31,7 +31,8 @@ const oscServer = require('./oscServer.js')
 const kapp = new Koa()
 kapp.use(cors())
 
-const enableMacadam = false
+const enableMacadam = true
+const macadamDeviceIndex = 4
 const enableDeinterlace = true
 const width = 1920
 const height = 1080
@@ -50,9 +51,9 @@ let flipV1 = true
 let rotate = 0.0
 let wipeFrac = 0.5
 
-let v210Loader
-let yuv422p10Loader
-let bgra8Loader
+let macadamLoader
+let ffmpegLoader
+let overlayLoader
 let vidSwitcher
 let webSaver
 let v210Saver
@@ -67,13 +68,18 @@ async function loadFrame(context, srcs, overlay, clQueue) {
 	const ovSrcs = []
 
 	for (let field = 0; field < numFields; ++field) {
-		bgSrcs.push([])
-		const loadPromises = srcs.map(async (src, i) => {
-			bgSrcs[field].push({ loader: src.loader, sources: await src.loader.createSources() })
-			return src.loader.loadFrame(src.source.data[field].data, bgSrcs[field][i].sources, clQueue)
-		})
-
+		bgSrcs.push(
+			await Promise.all(
+				srcs.map(async (src) => {
+					return { loader: src.loader, sources: await src.loader.createSources() }
+				})
+			)
+		)
 		ovSrcs.push({ loader: overlay.loader, sources: await overlay.loader.createSources() })
+
+		const loadPromises = srcs.map((src, i) =>
+			src.loader.loadFrame(src.source.data[field].data, bgSrcs[field][i].sources, clQueue)
+		)
 		loadPromises.push(overlay.loader.loadFrame(overlay.source.data, ovSrcs[field].sources, clQueue))
 
 		await Promise.all(loadPromises)
@@ -91,90 +97,89 @@ async function loadFrame(context, srcs, overlay, clQueue) {
 async function processFrame(context, params, clQueue) {
 	// const start = process.hrtime();
 
-	const rgbaBGs = []
-	const rgbaOVs = []
-	const rgbaDsts = []
 	const v210Dsts = await v210Saver.createDests()
 	const webDsts = await webSaver.createDests()
 
 	for (let field = 0; field < params.numFields; ++field) {
 		const srcs = params.bgSrcs[field]
 		const ovs = params.ovSrcs[field]
-		rgbaBGs.push([])
-		const processPromises = srcs.map(async (src, i) => {
-			rgbaBGs[field].push(await src.loader.createDest({ width: width, height: height }))
-			return src.loader.processFrame(src.sources, rgbaBGs[field][i], clQueue)
-		})
 
-		rgbaOVs.push(await ovs.loader.createDest({ width: width, height: height }))
-		processPromises.push(ovs.loader.processFrame(ovs.sources, rgbaOVs[field], clQueue))
-
-		rgbaDsts.push(
-			await context.createBuffer(
-				v210Loader.getNumBytesRGBA(),
-				'readwrite',
-				'coarse',
-				{ width: width, height: height },
-				'processFrame'
-			)
+		const rgbaBGs = await Promise.all(
+			srcs.map(async (src) => await src.loader.createDest({ width: width, height: height }))
+		)
+		const rgbaOV = await ovs.loader.createDest({ width: width, height: height })
+		const rgbaDst = await context.createBuffer(
+			ffmpegLoader.getNumBytesRGBA(),
+			'readwrite',
+			'coarse',
+			{ width: width, height: height },
+			'processFrame'
 		)
 
-		const s0 = 0
-		const s1 = numInputs > 1 ? 1 : 0
-		processPromises.push(
-			vidSwitcher.processFrame(
-				[
-					{
-						input: rgbaBGs[field][s0],
-						scale: scale0,
-						offsetX: offset0,
-						offsetY: 0.0,
-						flipH: false,
-						flipV: flipV0,
-						rotate: rotate
-					},
-					{
-						input: rgbaBGs[field][s1],
-						scale: scale1,
-						offsetX: offset1,
-						offsetY: 0.0,
-						flipH: false,
-						flipV: flipV1,
-						rotate: rotate
-					}
-				],
-				{ wipe: true, frac: wipeFrac },
-				[rgbaOVs[field]],
-				rgbaDsts[field],
-				clQueue
+		let processPromises = []
+		try {
+			processPromises = srcs.map((src, i) =>
+				src.loader.processFrame(src.sources, rgbaBGs[i], clQueue)
 			)
-		)
-		await Promise.all(processPromises)
+			processPromises.push(ovs.loader.processFrame(ovs.sources, rgbaOV, clQueue))
+
+			const s0 = 0
+			const s1 = numInputs > 1 ? 1 : 0
+			processPromises.push(
+				vidSwitcher.processFrame(
+					[
+						{
+							input: rgbaBGs[s0],
+							scale: scale0,
+							offsetX: offset0,
+							offsetY: 0.0,
+							flipH: false,
+							flipV: flipV0,
+							rotate: rotate
+						},
+						{
+							input: rgbaBGs[s1],
+							scale: scale1,
+							offsetX: offset1,
+							offsetY: 0.0,
+							flipH: false,
+							flipV: flipV1,
+							rotate: rotate
+						}
+					],
+					{ wipe: true, frac: wipeFrac },
+					[rgbaOV],
+					rgbaDst,
+					clQueue
+				)
+			)
+			await Promise.all(processPromises)
+		} catch (err) {
+			console.log(err)
+		}
 
 		const interlace = enableDeinterlace ? 0x1 | (field << 1) : 0
 		await Promise.all([
 			enableMacadam
-				? processPromises.push(
-						v210Saver.processFrame(rgbaDsts[field], v210Dsts, clQueue, interlace)
-				  )
+				? processPromises.push(v210Saver.processFrame(rgbaDst, v210Dsts, clQueue, interlace))
 				: Promise.resolve(),
 			field === 0
-				? processPromises.push(webSaver.processFrame(rgbaDsts[field], webDsts, clQueue))
+				? processPromises.push(webSaver.processFrame(rgbaDst, webDsts, clQueue))
 				: Promise.resolve()
 		])
 
-		await Promise.all(processPromises)
+		await context.waitFinish(clQueue)
 		srcs.forEach((sArr) => sArr.sources.forEach((s) => s.release()))
 		ovs.sources.forEach((s) => s.release())
-		rgbaDsts.forEach((s) => s.release())
+		rgbaBGs.forEach((s) => s.release())
+		rgbaOV.release()
+		rgbaDst.release()
 	}
 
 	// const end = process.hrtime(start);
 	// console.log(`OpenCL-${params.count}: ${(end[1] / 1000000.0).toFixed(2)}`);
 
 	await context.waitFinish(clQueue)
-	rgbaBGs.forEach((sArr) => sArr.forEach((s) => s.release()))
-	rgbaOVs.forEach((s) => s.release())
 
 	// const done = process.hrtime(start);
 	// console.log(`OpenCL done-${params.count}: ${(done[0] * 1000.0 + done[1] / 1000000.0).toFixed(2)}`);
@@ -215,6 +220,12 @@ async function init() {
 	await demuxer.seek({ time: 40 })
 	const stream = demuxer.streams[0]
 	let decoder = beamcoder.decoder({ name: stream.codecpar.name })
+	let decoderV210 = beamcoder.decoder({
+		name: 'v210',
+		width: width,
+		height: height,
+		interlaced: true
+	})
 	let filterer = await beamcoder.filterer({
 		filterType: 'video',
 		inputParams: [
@@ -231,8 +242,7 @@ async function init() {
 				pixelFormat: stream.codecpar.format
 			}
 		],
-		// filterSpec: 'yadif=mode=1:parity=-1:deint=0'
-		filterSpec: 'yadif=mode=0:parity=-1:deint=0'
+		filterSpec: 'yadif=mode=send_field:parity=auto:deint=all'
 	})
 
 	const bgColSpecRead = '709'
@@ -240,19 +250,29 @@ async function init() {
 	const colSpecWrite = '709'
 	const webColSpecWrite = 'sRGB'
 
-	v210Loader = new io.ToRGBA(context, bgColSpecRead, colSpecWrite, new v210.Reader(width, height))
-	await v210Loader.init()
-
-	yuv422p10Loader = new io.ToRGBA(
+	macadamLoader = new io.ToRGBA(
 		context,
 		bgColSpecRead,
 		colSpecWrite,
 		new yuv422p10.Reader(width, height)
 	)
-	await yuv422p10Loader.init()
+	await macadamLoader.init()
 
-	bgra8Loader = new io.ToRGBA(context, ovColSpecRead, colSpecWrite, new bgra8.Reader(width, height))
-	await bgra8Loader.init()
+	ffmpegLoader = new io.ToRGBA(
+		context,
+		bgColSpecRead,
+		colSpecWrite,
+		new yuv422p10.Reader(width, height)
+	)
+	await ffmpegLoader.init()
+
+	overlayLoader = new io.ToRGBA(
+		context,
+		ovColSpecRead,
+		colSpecWrite,
+		new bgra8.Reader(width, height)
+	)
+	await overlayLoader.init()
 
 	vidSwitcher = new vidSwitch.default(context, width, height, 2, 1)
 	await vidSwitcher.init()
@@ -346,6 +366,16 @@ async function init() {
 		if (enableMacadam) {
 			let frame = await capture.frame()
 			data = [frame.video]
+
+			const packet = beamcoder.packet({
+				pts: frame.video.frameTime,
+				stream_index: 0,
+				size: frame.video.data.length,
+				data: frame.video.data
+			})
+			const ffFrame = await decoderV210.decode(packet)
+			const filtFrames = await deinterlace({ count: params.count, data: ffFrame.frames })
+			data = filtFrames.data
 		}
 		// const done = process.hrtime(start);
 		// console.log(`readCapture-${params.count}: ${(done[0] * 1000.0 + done[1] / 1000000.0).toFixed(2)}`);
@@ -356,7 +386,10 @@ async function init() {
 		// const start = process.hrtime();
 		const doDeinterlace = enableDeinterlace // && params.data[0].interlaced_frame;
 		let filtFrames = params.data
-		if (doDeinterlace) filtFrames = await filterer.filter(params.data)
+		if (doDeinterlace) {
+			filtFrames = await filterer.filter(params.data)
+			// console.dir(filtFrames, { depth: 3, getters: true })
+		}
 		const result = doDeinterlace ? filtFrames[0].frames : params.data
 		// const done = process.hrtime(start);
 		// console.log(`deinterlace-${params.count}: ${(done[0] * 1000.0 + done[1] / 1000000.0).toFixed(2)}`);
@@ -371,6 +404,11 @@ async function init() {
 		return { count: params.count, data: ov }
 	}
 
+	async function playFrame(params) {
+		await playback.displayFrame(params)
+		return params
+	}
+
 	async function waitForIt(t) {
 		return new Promise((resolve) => {
 			setTimeout(resolve, t > 0 ? t : 0)
@@ -380,14 +418,14 @@ async function init() {
 	let capture, playback
 	if (enableMacadam) {
 		capture = await macadam.capture({
-			deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
-			displayMode: macadam.bmdModeHD1080p25,
+			deviceIndex: macadamDeviceIndex, // Index relative to the 'macadam.getDeviceInfo()' array
+			displayMode: macadam.bmdModeHD1080i50,
 			pixelFormat: macadam.bmdFormat10BitYUV
 		})
 
 		playback = await macadam.playback({
-			deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
-			displayMode: macadam.bmdModeHD1080p25,
+			deviceIndex: macadamDeviceIndex, // Index relative to the 'macadam.getDeviceInfo()' array
+			displayMode: macadam.bmdModeHD1080i50,
 			pixelFormat: macadam.bmdFormat10BitYUV
 		})
 	}
@@ -397,15 +435,17 @@ async function init() {
 	while (true) {
 		let work = []
 		let stamp = process.hrtime()
-		// if (result.length >= 7) {
-		// 	result[6].buf.release()
-		// }
+		if (result.length >= 8) {
+			result[7].release()
+		}
+		if (result.length >= 7) {
+			work[7] = result[6]
+		}
 		if (result.length >= 6) {
 			result[5][1].copy(lastWeb)
 			if (enableMacadam) {
-				work[6] = playback.displayFrame(result[5][0])
+				work[6] = playFrame(result[5][0])
 			}
-			result[5][0].release()
 			result[5][1].release()
 		}
 		if (result.length >= 5) {
@@ -417,9 +457,9 @@ async function init() {
 		if (result.length >= 3) {
 			if (result[2][0].data.length) {
 				let srcs = []
-				if (enableMacadam) srcs.push({ loader: v210Loader, source: result[2][1] })
-				srcs.push({ loader: yuv422p10Loader, source: result[2][0] })
-				const ovs = { loader: bgra8Loader, source: result[2][enableMacadam ? 2 : 1] }
+				if (enableMacadam) srcs.push({ loader: macadamLoader, source: result[2][1] })
+				srcs.push({ loader: ffmpegLoader, source: result[2][0] })
+				const ovs = { loader: overlayLoader, source: result[2][enableMacadam ? 2 : 1] }
 				work[3] = loadFrame(context, srcs, ovs, context.queue.load)
 			}
 		}

@@ -66,7 +66,6 @@ const rgba8Kernel = `
                       __private unsigned int width,
                       __private unsigned int interlace,
                       __global float* restrict gammaLut) {
-    uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
     // 64 input pixels per workItem
@@ -74,8 +73,9 @@ const rgba8Kernel = `
     uint numLoops = numPixels;
 
     uint interlaceOff = (3 == interlace) ? 1 : 0;
-    uint inOff = width * (interlaceOff + get_group_id(0)) + get_local_id(0) * 64;
-    uint outOff = 64 * (interlaceOff + item);
+		uint line = get_group_id(0) * ((0 == interlace) ? 1 : 2) + interlaceOff;
+    uint inOff = width * line + get_local_id(0) * 64;
+		uint outOff = width * line + get_local_id(0) * 64;
 
     for (uint i=0; i<numLoops; ++i) {
       uchar4 rgba;

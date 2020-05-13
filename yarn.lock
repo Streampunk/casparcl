@@ -1483,10 +1483,10 @@ node-abi@^2.7.0:
   dependencies:
     semver "^5.4.1"
 
-nodencl@^1.2.5:
-  version "1.2.5"
-  resolved "https://registry.yarnpkg.com/nodencl/-/nodencl-1.2.5.tgz#5ece4c4bf2d0c415fa261760de396a7e947864fe"
-  integrity sha512-cTlmNzNW56hhlIFc/TOLbXx/FlD4jpsdgRC6T2aXgjOP3Mm8YDRNzy+hTWEqIoAoC2SkM7UmSINIoRWCknqxlw==
+nodencl@^1.3.0:
+  version "1.3.0"
+  resolved "https://registry.yarnpkg.com/nodencl/-/nodencl-1.3.0.tgz#cce30e5dca277dc45293e4bac8b691af4ec076e7"
+  integrity sha512-r9lGLS4/td/hn8eUi60bpa0eDTz0RMxxI11Gt6u8iZyBbqLZ4XEdnIGbGoILolvz7nTvg52yS25FKK++EUasGQ==
   dependencies:
     bindings "^1.5.0"
     segfault-handler "^1.3.0"

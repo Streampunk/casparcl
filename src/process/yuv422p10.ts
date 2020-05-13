@@ -126,7 +126,6 @@ const yuv422p10leKernel = `
                       __private unsigned int interlace,
                       __constant float4* restrict colMatrix,
                       __global float* restrict gammaLut) {
-    uint item = get_global_id(0);
     bool lastItemOnLine = get_local_id(0) == get_local_size(0) - 1;
 
     // 64 input pixels per workItem = 8 input luma ushort8s per work item, 8 each u & v ushort4s per work item
@@ -135,8 +134,9 @@ const yuv422p10leKernel = `
     uint remain = numPixels % 8;
 
     uint interlaceOff = (3 == interlace) ? 1 : 0;
-    uint inOff = width * (interlaceOff + get_group_id(0)) + get_local_id(0) * 64;
-    uint outOff = 8 * (interlaceOff + item);
+		uint line = get_group_id(0) * ((0 == interlace) ? 1 : 2) + interlaceOff;
+    uint inOff = width * line + get_local_id(0) * 64;
+		uint outOff = width * line / 8 + get_local_id(0) * 8;
 
     if (64 != numPixels) {
       // clear the output buffers for the last item, partially overwritten below
