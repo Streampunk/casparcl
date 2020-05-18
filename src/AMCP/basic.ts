@@ -14,25 +14,15 @@
 */
 
 import { clContext as nodenCLContext } from 'nodencl'
-import { ChanLayer, SourceFrame } from '../chanLayer'
 import { Commands } from './commands'
-import { ProducerRegistry } from '../producer/producer'
-import { RedioPipe } from 'redioactive'
-
-const wait = async (t: number): Promise<void> =>
-	new Promise((resolve) => {
-		setTimeout(resolve, t)
-	})
+import { ChanLayer } from '../chanLayer'
+import { Channel } from '../channel'
 
 export class Basic {
-	private readonly producerRegistry: ProducerRegistry
-	private foreground: RedioPipe<SourceFrame> | null
-	private background: RedioPipe<SourceFrame> | null
+	private readonly channels: Array<Channel>
 
 	constructor(clContext: nodenCLContext) {
-		this.producerRegistry = new ProducerRegistry(clContext)
-		this.foreground = null
-		this.background = null
+		this.channels = Array.from([1, 2, 3, 4], (c) => new Channel(clContext, c))
 	}
 
 	/** Add the supported basic transport commands */
@@ -70,9 +60,9 @@ export class Basic {
 		const autoPlay = params.find((param) => param === 'AUTO') !== undefined
 		console.log(`loadbg: clip '${clip}', loop ${loop}, auto play ${autoPlay}`)
 
-		this.background = await this.producerRegistry.createSource(chanLay, params)
+		const bgOK = this.channels[chanLay.channel - 1].createSource(chanLay, params)
 
-		return Promise.resolve(this.background != null)
+		return bgOK
 	}
 
 	/**
@@ -82,9 +72,9 @@ export class Basic {
 	async load(chanLay: ChanLayer, params: string[]): Promise<boolean> {
 		if (!chanLay.valid) return Promise.resolve(false)
 
-		this.background = await this.producerRegistry.createSource(chanLay, params)
+		const bgOK = this.channels[chanLay.channel - 1].createSource(chanLay, params)
 
-		return Promise.resolve(this.background != null)
+		return bgOK
 	}
 
 	/**
@@ -93,24 +83,13 @@ export class Basic {
 	 * If additional parameters (see LOADBG) are provided then the provided clip will first be loaded to the background.
 	 */
 	async play(chanLay: ChanLayer, params: string[]): Promise<boolean> {
-		// console.log('play', params)
 		if (!chanLay.valid) return Promise.resolve(false)
 
 		if (params.length !== 0) await this.loadbg(chanLay, params)
 
-		if (this.background !== null) {
-			this.foreground = this.background
-			this.background = null
-		}
+		const fgOK = this.channels[chanLay.channel - 1].play()
 
-		if (this.foreground != null) {
-			this.foreground.each(async (f) => {
-				// console.log('FRM:', f.timestamp)
-				f.video.release()
-				return wait(1)
-			})
-		}
-		return Promise.resolve(this.foreground != null)
+		return fgOK
 	}
 
 	/** Pauses playback of the foreground clip on the specified layer. The RESUME command can be used to resume playback again. */

@@ -1,10 +1,8 @@
 import { clContext as nodenCLContext } from 'nodencl';
-import { ChanLayer } from '../chanLayer';
 import { Commands } from './commands';
+import { ChanLayer } from '../chanLayer';
 export declare class Basic {
-    private readonly producerRegistry;
-    private foreground;
-    private background;
+    private readonly channels;
     constructor(clContext: nodenCLContext);
     /** Add the supported basic transport commands */
     addCmds(commands: Commands): void;

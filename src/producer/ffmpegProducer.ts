@@ -17,7 +17,7 @@ import { SourceFrame } from '../chanLayer'
 import { ProducerFactory, Producer, InvalidProducerError } from './producer'
 import { clContext as nodenCLContext, OpenCLBuffer } from 'nodencl'
 import { Demuxer, demuxer, Decoder, decoder, Filterer, filterer, Packet, Frame } from 'beamcoder'
-import redio, { RedioPipe, isEnd, isNil } from 'redioactive'
+import redio, { RedioPipe, nil, isEnd, isNil } from 'redioactive'
 import { ToRGBA } from '../process/io'
 import { Reader } from '../process/yuv422p10'
 
@@ -41,7 +41,6 @@ export class FFmpegProducer implements Producer {
 		this.clContext = context
 		this.decoders = []
 		this.filterers = []
-		this.clContext.logBuffers()
 	}
 
 	async initialise(): Promise<RedioPipe<SourceFrame> | null> {
@@ -50,6 +49,7 @@ export class FFmpegProducer implements Producer {
 		let height = 0
 		try {
 			this.demuxer = await demuxer(url)
+			await this.demuxer.seek({ time: 20 })
 			// console.log('NumStreams:', this.demuxer.streams.length)
 			this.demuxer.streams.forEach((_s, i) => {
 				// eslint-disable-next-line @typescript-eslint/camelcase
@@ -117,7 +117,7 @@ export class FFmpegProducer implements Producer {
 				if (!isEnd(frame) && !isNil(frame)) {
 					const frm = frame as Frame
 					const ff = await this.filterers[0].filter([frm])
-					return ff[0].frames
+					return ff[0].frames.length > 0 ? ff[0].frames : nil
 				} else {
 					return frame
 				}
