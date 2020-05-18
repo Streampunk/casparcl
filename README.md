@@ -62,7 +62,7 @@ Still to come:
 
 ### 18th May 2020
 
-CasparCL will be renamed _Phaneron_ - based on the Greek for _visible, showable_ - a tool for the contruction of audio/visiual phenomenon. This will be released as both a video server with AMCP-lite controls and a kits of parts than can be used to assemble clustered video server / mixer / graphics technology. Please bear with us while we restructure this project into [something phenominal](https://github.com/Streampunk/phaneron).
+CasparCL will be renamed _Phaneron_ - based on the Greek for _visible, showable_ - a tool for the contruction of audio/visiual phenomenon. This will be released as both a video server with AMCP-lite controls and a kits of parts than can be used to assemble clustered video server / mixer / graphics technology. Please bear with us while we restructure this project into [something phenomenal](https://github.com/Streampunk/phaneron).
 
 We are still aiming for UHD/HDR support, open-source, low-latency, Node-based etc. etc.!
 
