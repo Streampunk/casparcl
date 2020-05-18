@@ -56,11 +56,31 @@ In the last 3 months:
 Still to come:
 
 * Bolting AMCP-_lite_ on the front of the stack.
-* Productising CasparCL - a MVP towards a realease.
+* Productising CasparCL - a MVP towards a release.
 
 ![CasparCL stack](/caspar_stack.png)
 
+### 18th May 2020
 
+CasparCL will be renamed _Phaneron_ - based on the Greek for _visible, showable_ - a tool for the contruction of audio/visiual phenomenon. This will be released as both a video server with AMCP-lite controls and a kits of parts than can be used to assemble clustered video server / mixer / graphics technology. Please bear with us while we restructure this project into [something phenominal](https://github.com/Streampunk/phaneron).
+
+We are still aiming for UHD/HDR support, open-source, low-latency, Node-based etc. etc.!
+
+In the meantime, technical developments have included:
+
+* Typescript definitions for Macadam and BlackMagic consumers and producers.
+* Further developments to the uncompressed RGBA HTML producer for low-latency display of streams in browsers.
+* AMCP controlling video playback through Redioactive.
+
+Next up:
+
+* More AMCP support, including mixer functions.
+* A simple pipeline for audio.
+* Investigation of how to best support `PLAY [HTML]`
+* Investigation of de-interlacing filters running on the GPU through OpenCL.
+* Clustering capability support in [Redioactive](https://github.com/Streampunk/redioactive).
+
+This will be the last update here. Look out for announcements 
 
 
 
