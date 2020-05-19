@@ -228,15 +228,15 @@ async function init () {
 		})
 	}
 
-	// let playback = await macadam.playback({
-  // 	deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
-  // 	displayMode: macadam.bmdModeHD1080i50,
-  // 	pixelFormat: macadam.bmdFormat10BitYUV
-	// })
+	let playback = await macadam.playback({
+  	deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
+  	displayMode: macadam.bmdModeHD1080i50,
+  	pixelFormat: macadam.bmdFormat10BitYUV
+	})
 
 	const oscUdp = new osc.UDPPort({
     localAddress: "0.0.0.0",
-    localPort: 3456
+    localPort: 9876
 	});
 	oscUdp.on("message", function (oscMessage) {
 		console.log(oscMessage.address, oscMessage.args)
@@ -288,7 +288,7 @@ async function init () {
     let stamp = process.hrtime();
     if (result.length >= 6) {
       result[5][1].copy(lastWeb);
-      // work[6] = playback.displayFrame(result[5][0]);
+      work[6] = playback.displayFrame(result[5][0]);
     }
 		if (result.length >= 5) {
       work[5] = saveFrame(context, result[4], context.queue.unload);

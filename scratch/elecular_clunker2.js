@@ -117,7 +117,7 @@ async function saveFrame(context, params, clQueue) {
 
 async function init () {
   const enableDeinterlace = true;
-  const platformIndex = 0;
+  const platformIndex = 1;
   const deviceIndex = 0;
   const context = new addon.clContext({
     platformIndex: platformIndex,
@@ -143,7 +143,7 @@ async function init () {
     outputParams: [{
       pixelFormat: stream.codecpar.format
     }],
-    filterSpec: 'yadif=mode=1:parity=-1:deint=0'
+    filterSpec: 'yadif=mode=0:parity=-1:deint=0'
   })
 
 	const bgColSpecRead = '709';
@@ -265,6 +265,7 @@ async function init () {
 		if (result.length >= 3) {
       if (result[2][0].data.length)
         work[3] = loadFrame(context, result[2][0], result[2][1], context.queue.load);
+				// console.log(result[2][0])
 		}
 		if (result.length >= 2) {
       work[2] = Promise.all([deinterlace(result[1]), reqOverlay(result[1])]);
@@ -278,7 +279,9 @@ async function init () {
 		let diff = process.hrtime(start);
     let wait = (counter * 40) - ((diff[0] * 1000) + (diff[1] / 1000000 | 0) );
     await waitForIt(wait);
-		console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`);
+		if (counter % 100 === 0) {
+			console.log(`Clunk ${counter++} completed in ${process.hrtime(stamp)} waiting ${wait}`);
+		} else { counter++ }
 	}
 };
 

@@ -31,7 +31,7 @@ function oscServer(params) {
   this.oscPort.on('message', (oscMessage/*, timeTag, info*/) => {
     const control = oscMessage.address;
     const values = oscMessage.args;
-    console.log(`OSC message: '${control}' values: [ ${values} ]`);
+    // console.log(`OSC message: '${control}' values: [ ${values} ]`);
 
     this.map.forEach(entry => {
       const update = entry[control];

@@ -26,12 +26,12 @@ const kapp = new Koa();
 kapp.use(cors());
 
 const enableMacadam = true;
-const enableDeinterlace = true;
+const enableDeinterlace = false;
 const width = 1920;
 const height = 1080;
 
 const oscPort = 9876;
-const oscRemoteAddr = '192.168.1.202';
+const oscRemoteAddr = '192.168.0.101';
 
 const numInputs = enableMacadam ? 2 : 1;
 
@@ -146,7 +146,7 @@ async function init () {
   const platformInfo = await context.getPlatformInfo();
   console.log(platformInfo.vendor, platformInfo.devices[deviceIndex].type);
 
-  let demuxer = await beamcoder.demuxer('M:/dpp/AS11_DPP_HD_EXAMPLE_1.mxf');
+  let demuxer = await beamcoder.demuxer('../../media/dpp/AS11_DPP_HD_EXAMPLE_1.mxf');
   await demuxer.seek({ time: 40 });
   const stream = demuxer.streams[0];
   let decoder = beamcoder.decoder({ name: stream.codecpar.name });
@@ -298,7 +298,7 @@ async function init () {
   let capture, playback;
   if (enableMacadam) {
     capture = await macadam.capture({
-      deviceIndex: 0, // Index relative to the 'macadam.getDeviceInfo()' array
+      deviceIndex: 1, // Index relative to the 'macadam.getDeviceInfo()' array
       displayMode: macadam.bmdModeHD1080p25,
       pixelFormat: macadam.bmdFormat10BitYUV
     })
