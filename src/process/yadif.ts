@@ -1,5 +1,5 @@
 /*
-  Phaneron - Clustered, 
+  Phaneron - Clustered, accelerated and cloud-fit video server, pre-assembled and in kit form.  
   Copyright (C) 2020 Streampunk Media Ltd.
   
   This program is free software: you can redistribute it and/or modify
